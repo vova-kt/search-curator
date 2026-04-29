@@ -7,10 +7,12 @@ import { runCuration } from './core/pipeline.js';
 import { recordFeedback } from './stages/feedback.js';
 import { byId, fuzzyTitle } from './strategies/dedupe/index.js';
 import { rules } from './strategies/filter/index.js';
-import { byDate } from './strategies/rank/index.js';
+import { byDate, llmRank } from './strategies/rank/index.js';
 import { llmExpand, templates } from './strategies/queryExpansion/index.js';
 
 export { DEFAULTS } from './core/config.js';
+export { llmRank, byDate } from './strategies/rank/index.js';
+export { rules } from './strategies/filter/index.js';
 
 /**
  * @typedef {Object} CreateCuratorOptions
@@ -32,6 +34,10 @@ export { DEFAULTS } from './core/config.js';
  * @property {(query: import('./core/types.js').Query, opts?: CurateOptions) => Promise<{ events: import('./core/types.js').Event[] }>} curate
  * @property {(picks: { liked: string[], disliked: string[] }) => Promise<void>} recordFeedback
  * @property {(scope?: import('./core/types.js').PreferenceScope) => Promise<void>} clearPreferences
+ * @property {() => Promise<import('./core/types.js').SavedQuery[]>} listSavedQueries
+ * @property {(ref: import('./core/types.js').SavedQueryRef) => Promise<import('./core/types.js').SavedQuery | undefined>} getSavedQuery
+ * @property {(q: import('./core/types.js').SavedQuery) => Promise<import('./core/types.js').SavedQuery>} upsertSavedQuery
+ * @property {(ref: import('./core/types.js').SavedQueryRef) => Promise<void>} deleteSavedQuery
  * @property {() => Promise<void>} close
  */
 
@@ -76,6 +82,9 @@ export async function createCurator(opts) {
       const events = await runCuration(ctx);
       lastResults = events;
       lastQuery = query;
+      // Bump last-searched timestamp on a matching saved query, if any.
+      // No-op when this query wasn't run from a saved entry.
+      await opts.storage.touchSavedQuery({ city: query.city, category: String(query.category) });
       return { events };
     },
 
@@ -99,6 +108,22 @@ export async function createCurator(opts) {
 
     async clearPreferences(scope) {
       await opts.storage.clearPreference(scope);
+    },
+
+    async listSavedQueries() {
+      return opts.storage.listSavedQueries();
+    },
+
+    async getSavedQuery(ref) {
+      return opts.storage.getSavedQuery(ref);
+    },
+
+    async upsertSavedQuery(q) {
+      return opts.storage.upsertSavedQuery(q);
+    },
+
+    async deleteSavedQuery(ref) {
+      return opts.storage.deleteSavedQuery(ref);
     },
 
     async close() {

@@ -1,8 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rules } from '../src/strategies/filter/rules.js';
-import { preferenceLLM } from '../src/strategies/filter/preferenceLLM.js';
-import { makeEvent, stubLLM } from './_helpers.js';
+import { makeEvent } from './_helpers.js';
 
 /**
  * @param {Partial<import('../src/core/types.js').Ctx>} extra
@@ -61,25 +60,3 @@ test('rules: query filters override preference filters', async () => {
   assert.equal(out[0].title, 'Cheap show');
 });
 
-test('preferenceLLM: returns input unchanged when there is no preference signal', async () => {
-  const events = [makeEvent({ title: 'A' }), makeEvent({ title: 'B', source: { name: 's', url: 'https://b.example.com' } })];
-  const llm = stubLLM(() => ({ keep: ['nothing'] }));
-  const out = await preferenceLLM(events, ctx({ llm }));
-  assert.equal(out.length, 2);
-});
-
-test('preferenceLLM: keeps only ids the LLM returns when preferences exist', async () => {
-  const a = makeEvent({ title: 'A' });
-  const b = makeEvent({ title: 'B', source: { name: 's', url: 'https://b.example.com' } });
-  const llm = stubLLM(() => ({ keep: [a.id] }));
-  const out = await preferenceLLM([a, b], ctx({
-    llm,
-    preference: {
-      liked: [{ id: 'evt_x', title: 'X', category: 'comedy', venue: { name: 'V', city: 'Berlin' }, startsAt: '2026-05-02' }],
-      disliked: [],
-      explicitFilters: {},
-    },
-  }));
-  assert.equal(out.length, 1);
-  assert.equal(out[0].id, a.id);
-});

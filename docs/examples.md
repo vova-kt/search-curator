@@ -50,28 +50,22 @@ The TUI runs fullscreen — it switches to the terminal's alternate-screen buffe
 
 ### Screens
 
+The TUI is **list-first**: after boot you land on the saved-searches list. From there you run, edit, create, or delete a search. Identity for a saved search is `(city, category)`.
+
 1. **Keys** — only shown when keys are missing. Tab through fields, last `enter` saves.
-2. **Search** — form for `city`, `category`, `days`, `limit`. Tab through; after the last field you land on a hotkey menu.
-3. **Progress** — live stage list (build queries → search → extract → dedupe → filter → rank → save) with a spinner on the active stage and counts (`extract 12/40 → 18`). Driven by `curator.curate()`'s `onProgress` callback (see [pipeline.md](pipeline.md)).
-4. **Results** — ranked list. `↑/↓` to move, `[l]` toggle like, `[d]` toggle dislike, `enter` to save feedback, `q`/`esc` to skip.
+2. **Saved searches** — list of persisted searches with their last-run timestamp (relative). `↑/↓` move, `enter` runs the selected entry, `[e]` opens the editor, `[n]` creates a new one, `[d]` deletes (asks for `y/N`), `[K]` re-enters API keys, `[q]` quits. An empty list shows only `[n] new` / `[K] keys` / `[q] quit`.
+3. **Editor** — form for one saved search. Fields in order: `city`, `category`, `days`, `limit`, `exclude (comma-sep)`, `rank guidance`. Tab through with `enter`; `esc` cancels back to the saved-searches list at any point. After the last field you land on a menu — `[s]` save, `[r]` save and run, `[c]` cancel.
+4. **Progress** — live stage list (build queries → search → extract → dedupe → filter → rank → save) with a spinner on the active stage and counts (`extract 12/40 → 18`). Driven by `curator.curate()`'s `onProgress` callback (see [pipeline.md](pipeline.md)).
+5. **Results** — ranked list with each event's ~5-word LLM rationale on the focused row, paged 10 per screen. `↑/↓` to move (auto-flips pages), `PgUp`/`PgDn` (or `space`/`b`) to jump a page, `g`/`G` to jump to top/bottom, `[l]` toggle like, `[d]` toggle dislike, `enter` to save feedback, `q`/`esc` to skip. Header shows `page N/M · showing X-Y`.
 
-### Search-screen hotkeys
-
-| Key | Effect                                  |
-| --- | --------------------------------------- |
-| `r` | run curation with current params        |
-| `e` | re-edit fields                          |
-| `k` | edit stored API keys                    |
-| `c` | clear preferences for the current city  |
-| `C` | clear all preferences                   |
-| `q` | quit                                    |
+The TUI explicitly opts into the `llmRank` strategy so the rank stage acts as a combined filter + rank pass — events excluded by `excludeKeywords` are dropped by the cheap `rules` filter, then the LLM further drops poor matches against the user's likes/dislikes and `rankGuidance`, attaching the rationale.
 
 What it exercises:
 
-- Full pipeline (`curate()`)
+- Full pipeline (`curate()`) with combined filter + rank LLM call
+- Saved-query CRUD (`listSavedQueries` / `upsertSavedQuery` / `deleteSavedQuery` / `touchSavedQuery`)
 - Feedback capture (`recordFeedback()`)
-- Preference scoping (change `city` between runs)
-- `clearPreferences()` via `c` / `C` hotkeys
+- Preference scoping (saved-query identity drives the city/category scope)
 
 ## Tuning workflow
 

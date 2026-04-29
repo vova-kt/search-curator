@@ -36,7 +36,9 @@ The `docs/` directory is the canonical reference. Read the page that matches you
 - **Types**: [src/core/types.js](src/core/types.js) — JSDoc typedefs only, no runtime
 - **Config**: [src/core/config.js](src/core/config.js)
 - **Prompts**: [src/prompts/](src/prompts/) — one file per prompt, exports a function returning `{ system, user }`
-- **Storage schema**: defined inline in each adapter — see [src/adapters/storage/sqlite.js](src/adapters/storage/sqlite.js) and [src/adapters/storage/indexeddb.js](src/adapters/storage/indexeddb.js)
+- **Storage schema**: defined inline in each adapter — see [src/adapters/storage/sqlite.js](src/adapters/storage/sqlite.js) and [src/adapters/storage/indexeddb.js](src/adapters/storage/indexeddb.js). Three logical tables (`events`, `preferences`, `kv`) plus `saved_queries` for user-defined searches keyed on `(city, category)`.
+- **Filter / rank**: only `rules` ships as a default filter strategy. The `llmRank` strategy in the rank stage is a *combined* filter + rank LLM pass — it omits poor matches and attaches a ~5-word rationale. Don't reintroduce a separate LLM filter stage.
+- **TUI**: list-first under [examples/tui/](examples/tui/). Screen names are an enum at [examples/tui/screens/screen.js](examples/tui/screens/screen.js); add to that enum rather than introducing string literals.
 
 ## Dev commands
 

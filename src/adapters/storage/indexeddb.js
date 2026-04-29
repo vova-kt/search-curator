@@ -10,6 +10,9 @@ import { scopeKey, effectiveScopeKeys, emptyPreference, mergePreferences } from 
 
 const DB_VERSION = 1;
 
+/** @param {{ city: string, category: string }} ref */
+const savedKey = (ref) => `${ref.city}|${ref.category}`;
+
 /**
  * @param {{ name?: string }} [opts]
  * @returns {import('../../core/types.js').StorageAdapter}
@@ -115,6 +118,72 @@ export function indexeddb({ name = 'events-curator' } = {}) {
       await txDone(tx);
     },
 
+    async listSavedQueries() {
+      const d = ensureOpen();
+      const tx = d.transaction('savedQueries', 'readonly');
+      const all = /** @type {Array<import('../../core/types.js').SavedQuery & { _key: string }>} */ (
+        await reqAsPromise(tx.objectStore('savedQueries').getAll())
+      );
+      await txDone(tx);
+      return all
+        .map(({ _key, ...q }) => q)
+        .sort((a, b) => {
+          const al = a.lastSearchedAt;
+          const bl = b.lastSearchedAt;
+          if (al && bl) return bl.localeCompare(al);
+          if (al && !bl) return -1;
+          if (!al && bl) return 1;
+          return b.createdAt.localeCompare(a.createdAt);
+        });
+    },
+
+    async getSavedQuery(ref) {
+      const d = ensureOpen();
+      const tx = d.transaction('savedQueries', 'readonly');
+      const row = /** @type {(import('../../core/types.js').SavedQuery & { _key: string }) | undefined} */ (
+        await reqAsPromise(tx.objectStore('savedQueries').get(savedKey(ref)))
+      );
+      await txDone(tx);
+      if (!row) return undefined;
+      const { _key, ...rest } = row;
+      return rest;
+    },
+
+    async upsertSavedQuery(q) {
+      const d = ensureOpen();
+      const tx = d.transaction('savedQueries', 'readwrite');
+      const store = tx.objectStore('savedQueries');
+      const _key = savedKey(q);
+      const existing = await reqAsPromise(store.get(_key));
+      const next = {
+        ...q,
+        excludeKeywords: q.excludeKeywords ?? [],
+        createdAt: existing?.createdAt ?? q.createdAt ?? new Date().toISOString(),
+        lastSearchedAt: q.lastSearchedAt ?? existing?.lastSearchedAt,
+      };
+      store.put({ ...next, _key });
+      await txDone(tx);
+      return next;
+    },
+
+    async deleteSavedQuery(ref) {
+      const d = ensureOpen();
+      const tx = d.transaction('savedQueries', 'readwrite');
+      tx.objectStore('savedQueries').delete(savedKey(ref));
+      await txDone(tx);
+    },
+
+    async touchSavedQuery(ref) {
+      const d = ensureOpen();
+      const tx = d.transaction('savedQueries', 'readwrite');
+      const store = tx.objectStore('savedQueries');
+      const existing = await reqAsPromise(store.get(savedKey(ref)));
+      if (existing) {
+        store.put({ ...existing, lastSearchedAt: new Date().toISOString() });
+      }
+      await txDone(tx);
+    },
+
     async getKV(key) {
       const d = ensureOpen();
       const tx = d.transaction('kv', 'readonly');
@@ -141,9 +210,15 @@ function openDb(name) {
     const req = indexedDB.open(name, DB_VERSION);
     req.onupgradeneeded = () => {
       const d = req.result;
-      for (const store of ['events', 'preferences', 'kv']) {
+      const keyPaths = {
+        events: 'id',
+        preferences: 'scope',
+        kv: 'key',
+        savedQueries: '_key',
+      };
+      for (const [store, keyPath] of Object.entries(keyPaths)) {
         if (!d.objectStoreNames.contains(store)) {
-          d.createObjectStore(store, { keyPath: store === 'preferences' ? 'scope' : store === 'events' ? 'id' : 'key' });
+          d.createObjectStore(store, { keyPath });
         }
       }
     };

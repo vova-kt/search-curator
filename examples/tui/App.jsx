@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
-import { createCurator } from '../../src/index.js';
+import { createCurator, llmRank } from '../../src/index.js';
 import { sqlite } from '../../src/adapters/storage/sqlite.js';
 import { memory } from '../../src/adapters/storage/memory.js';
 import { openai } from '../../src/adapters/llm/openai.js';
@@ -8,8 +8,10 @@ import { tavily } from '../../src/adapters/search/tavily.js';
 import { ProgressPhase } from '../../src/core/progress.js';
 import { stubLLM, stubSearch } from '../_stubs.js';
 import { resolveKeys, saveStored, loadStored, configPath } from './config.js';
+import { Screen } from './screens/screen.js';
 import KeysScreen from './screens/Keys.jsx';
-import SearchScreen from './screens/Search.jsx';
+import SavedQueriesScreen from './screens/SavedQueries.jsx';
+import QueryEditorScreen from './screens/QueryEditor.jsx';
 import ResultsScreen from './screens/Results.jsx';
 import ProgressScreen from './screens/Progress.jsx';
 
@@ -19,13 +21,15 @@ export default function App({ dry }) {
   const [rows, setRows] = useState(stdout.rows ?? 24);
   const [cols, setCols] = useState(stdout.columns ?? 80);
 
-  const [screen, setScreen] = useState(dry ? 'boot' : 'boot');
+  const [screen, setScreen] = useState(Screen.BOOT);
   const [curator, setCurator] = useState(null);
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState({});
   const [progressLabel, setProgressLabel] = useState('');
   const [results, setResults] = useState([]);
-  const [lastQuery, setLastQuery] = useState({ city: '', category: '', days: 14, limit: 10 });
+  const [savedQueries, setSavedQueries] = useState(/** @type {import('../../src/core/types.js').SavedQuery[]} */ ([]));
+  const [editing, setEditing] = useState(/** @type {null | import('../../src/core/types.js').SavedQuery} */ (null));
+  const [activeQuery, setActiveQuery] = useState(/** @type {null | import('../../src/core/types.js').SavedQuery} */ (null));
   const [status, setStatus] = useState(null);
 
   useInput((input, key) => {
@@ -49,6 +53,13 @@ export default function App({ dry }) {
     }
   };
 
+  const refreshSaved = async (c = curator) => {
+    if (!c) return [];
+    const list = await c.listSavedQueries();
+    setSavedQueries(list);
+    return list;
+  };
+
   // Boot: build curator (or jump to keys screen if we lack credentials).
   useEffect(() => {
     if (dry) {
@@ -57,7 +68,7 @@ export default function App({ dry }) {
     }
     const r = resolveKeys();
     if (!r.openaiApiKey || !r.tavilyApiKey) {
-      setScreen('keys');
+      setScreen(Screen.KEYS);
     } else {
       buildCurator(r).catch((e) => setError(String(e)));
     }
@@ -69,9 +80,12 @@ export default function App({ dry }) {
       : openai({ apiKey: keys.openaiApiKey, model: keys.openaiModel });
     const search = dry ? [stubSearch()] : [tavily({ apiKey: keys.tavilyApiKey })];
     const storage = dry ? memory() : sqlite({ path: keys.dbPath });
-    const c = await createCurator({ llm, search, storage });
+    // The TUI opts into LLM rank so saved-query rankGuidance and 5-word
+    // rationales actually flow through.
+    const c = await createCurator({ llm, search, storage, strategies: { rank: [llmRank] } });
     setCurator(c);
-    setScreen('search');
+    await refreshSaved(c);
+    setScreen(Screen.SAVED_LIST);
   };
 
   const handleKeysSubmit = async ({ openaiApiKey, tavilyApiKey }) => {
@@ -86,11 +100,11 @@ export default function App({ dry }) {
     }
   };
 
-  const handleSearch = async (params) => {
-    setLastQuery(params);
+  const runSaved = async (q) => {
+    setActiveQuery(q);
     setProgress({});
-    setProgressLabel(`curating ${params.category} in ${params.city}…`);
-    setScreen('progress');
+    setProgressLabel(`curating ${q.category} in ${q.city}…`);
+    setScreen(Screen.PROGRESS);
 
     const onProgress = (e) => {
       setProgress((prev) => {
@@ -108,34 +122,49 @@ export default function App({ dry }) {
 
     try {
       const { events } = await curator.curate({
-        city: params.city,
-        category: params.category,
-        timeframe: { rolling: { days: params.days } },
-        limit: params.limit,
+        city: q.city,
+        category: q.category,
+        timeframe: { rolling: { days: q.days } },
+        limit: q.limit,
+        filters: { excludeKeywords: q.excludeKeywords ?? [] },
+        rankGuidance: q.rankGuidance,
       }, { onProgress });
       setResults(events);
-      setScreen('results');
+      await refreshSaved();
+      setScreen(Screen.RESULTS);
     } catch (e) {
       setError(String(e));
     }
   };
 
-  const handleEditKeys = () => setScreen('keys');
-
-  const handleClearAll = async () => {
-    await curator.clearPreferences();
-    setStatus('cleared all preferences');
+  const handleSaveQuery = async (q) => {
+    await curator.upsertSavedQuery(q);
+    await refreshSaved();
+    setStatus(`saved ${q.city} / ${q.category}`);
+    setEditing(null);
+    setScreen(Screen.SAVED_LIST);
   };
 
-  const handleClearCity = async (city) => {
-    await curator.clearPreferences({ city });
-    setStatus(`cleared preferences for ${city}`);
+  const handleSaveAndRunQuery = async (q) => {
+    const persisted = await curator.upsertSavedQuery(q);
+    await refreshSaved();
+    setEditing(null);
+    await runSaved(persisted);
   };
+
+  const handleDeleteQuery = async (ref) => {
+    await curator.deleteSavedQuery(ref);
+    await refreshSaved();
+    setStatus(`deleted ${ref.city} / ${ref.category}`);
+  };
+
+  const handleEditKeys = () => setScreen(Screen.KEYS);
 
   const handleFeedback = async ({ liked, disliked }) => {
     await curator.recordFeedback({ liked, disliked });
     setStatus(`saved feedback (${liked.length} liked, ${disliked.length} disliked)`);
-    setScreen('search');
+    setActiveQuery(null);
+    setScreen(Screen.SAVED_LIST);
   };
 
   const handleQuit = async () => {
@@ -165,38 +194,47 @@ export default function App({ dry }) {
           </Box>
         )}
 
-        {!error && screen === 'boot' && <Text dimColor>booting…</Text>}
+        {!error && screen === Screen.BOOT && <Text dimColor>booting…</Text>}
 
-        {!error && screen === 'keys' && (
+        {!error && screen === Screen.KEYS && (
           <KeysScreen
             initial={loadStored()}
             source={resolveKeys().source}
             onSubmit={handleKeysSubmit}
-            onCancel={curator ? () => setScreen('search') : null}
+            onCancel={curator ? () => setScreen(Screen.SAVED_LIST) : null}
           />
         )}
 
-        {!error && screen === 'search' && curator && (
-          <SearchScreen
-            initial={lastQuery}
-            dry={dry}
-            onSubmit={handleSearch}
+        {!error && screen === Screen.SAVED_LIST && curator && (
+          <SavedQueriesScreen
+            queries={savedQueries}
+            onRun={runSaved}
+            onEdit={(q) => { setEditing(q); setScreen(Screen.EDITOR); }}
+            onNew={() => { setEditing(null); setScreen(Screen.EDITOR); }}
+            onDelete={handleDeleteQuery}
             onEditKeys={dry ? null : handleEditKeys}
-            onClearAll={handleClearAll}
-            onClearCity={handleClearCity}
             onQuit={handleQuit}
           />
         )}
 
-        {!error && screen === 'progress' && (
+        {!error && screen === Screen.EDITOR && curator && (
+          <QueryEditorScreen
+            existing={editing}
+            onSave={handleSaveQuery}
+            onSaveAndRun={handleSaveAndRunQuery}
+            onCancel={() => { setEditing(null); setScreen(Screen.SAVED_LIST); }}
+          />
+        )}
+
+        {!error && screen === Screen.PROGRESS && (
           <ProgressScreen progress={progress} label={progressLabel} />
         )}
 
-        {!error && screen === 'results' && (
+        {!error && screen === Screen.RESULTS && (
           <ResultsScreen
             events={results}
             onSubmit={handleFeedback}
-            onBack={() => setScreen('search')}
+            onBack={() => setScreen(Screen.SAVED_LIST)}
           />
         )}
 

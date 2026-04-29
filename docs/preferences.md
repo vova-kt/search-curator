@@ -47,8 +47,8 @@ Preferences are how the curator gets better with use. The user marks events as l
 
 During curation:
 
-- `filter` strategies receive `ctx.preference`. `rules` reads `explicitFilters`. `preferenceLLM` uses `liked` / `disliked` / `derivedTraits` as few-shot context.
-- `rank` strategies use the same. `llmRank` weights events that resemble `liked` examples and de-weights those resembling `disliked`.
+- `filter` strategies receive `ctx.preference`. `rules` reads `explicitFilters` (and any `Query.filters` overrides).
+- `rank` strategies use the same. `llmRank` is a combined filter + rank pass: it weights events that resemble `liked` examples, de-weights those resembling `disliked`, and omits clearly-poor matches against `derivedTraits` and `Query.rankGuidance` from its output.
 
 ## Scoping
 

@@ -51,11 +51,23 @@ export function stubLLM() {
           },
         };
       }
-      if (req.system.includes('rank events')) {
+      if (req.system.includes('filter and rank events')) {
+        // Stub: pass everything through unranked. Real LLM provides 5-word
+        // rationales; here we just keep the candidates so dry runs are
+        // deterministic without a real model.
+        const m = req.messages[0]?.content?.match(/Candidates:\n(\[[\s\S]*?\])\n/);
+        if (m) {
+          try {
+            const candidates = JSON.parse(m[1]);
+            return {
+              text: '',
+              json: {
+                ranked: candidates.map((c) => ({ id: c.id, rationale: 'stub: kept by dry run' })),
+              },
+            };
+          } catch {}
+        }
         return { text: '', json: { ranked: [] } };
-      }
-      if (req.system.includes('which events match a user')) {
-        return { text: '', json: { keep: [] } };
       }
       if (req.system.includes('summarize a user')) {
         return { text: '', json: { traits: 'alt-comedy, intimate venues, weekends' } };

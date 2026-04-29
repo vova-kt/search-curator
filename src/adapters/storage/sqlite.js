@@ -39,6 +39,18 @@ const SCHEMA = `
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS saved_queries (
+    city TEXT NOT NULL,
+    category TEXT NOT NULL,
+    days INTEGER NOT NULL,
+    query_limit INTEGER NOT NULL,
+    exclude_keywords_json TEXT NOT NULL,
+    rank_guidance TEXT,
+    created_at TEXT NOT NULL,
+    last_searched_at TEXT,
+    PRIMARY KEY (city, category)
+  );
 `;
 
 /**
@@ -168,6 +180,64 @@ export function sqlite({ path }) {
       d.prepare('DELETE FROM preferences WHERE scope = ?').run(key);
     },
 
+    async listSavedQueries() {
+      const d = ensureOpen();
+      const rows = /** @type {SavedQueryRow[]} */ (
+        d.prepare(`
+          SELECT * FROM saved_queries
+          ORDER BY (last_searched_at IS NULL), last_searched_at DESC, created_at DESC
+        `).all()
+      );
+      return rows.map(rowToSavedQuery);
+    },
+
+    async getSavedQuery({ city, category }) {
+      const d = ensureOpen();
+      const row = /** @type {SavedQueryRow | undefined} */ (
+        d.prepare('SELECT * FROM saved_queries WHERE city = ? AND category = ?').get(city, category)
+      );
+      return row ? rowToSavedQuery(row) : undefined;
+    },
+
+    async upsertSavedQuery(q) {
+      const d = ensureOpen();
+      const existing = /** @type {{ created_at: string } | undefined} */ (
+        d.prepare('SELECT created_at FROM saved_queries WHERE city = ? AND category = ?').get(q.city, q.category)
+      );
+      const next = {
+        ...q,
+        createdAt: existing?.created_at ?? q.createdAt ?? new Date().toISOString(),
+      };
+      d.prepare(`
+        INSERT INTO saved_queries (
+          city, category, days, query_limit, exclude_keywords_json, rank_guidance,
+          created_at, last_searched_at
+        ) VALUES (
+          @city, @category, @days, @query_limit, @exclude_keywords_json, @rank_guidance,
+          @created_at, @last_searched_at
+        )
+        ON CONFLICT(city, category) DO UPDATE SET
+          days = excluded.days,
+          query_limit = excluded.query_limit,
+          exclude_keywords_json = excluded.exclude_keywords_json,
+          rank_guidance = excluded.rank_guidance,
+          last_searched_at = excluded.last_searched_at
+      `).run(savedQueryToRow(next));
+      return next;
+    },
+
+    async deleteSavedQuery({ city, category }) {
+      const d = ensureOpen();
+      d.prepare('DELETE FROM saved_queries WHERE city = ? AND category = ?').run(city, category);
+    },
+
+    async touchSavedQuery({ city, category }) {
+      const d = ensureOpen();
+      d.prepare(
+        'UPDATE saved_queries SET last_searched_at = ? WHERE city = ? AND category = ?',
+      ).run(new Date().toISOString(), city, category);
+    },
+
     async getKV(key) {
       const d = ensureOpen();
       const row = /** @type {{ value: string } | undefined} */ (
@@ -271,6 +341,51 @@ function preferenceToRow(key, p) {
     filters_json: JSON.stringify(p.explicitFilters),
     derived_traits: p.derivedTraits ?? null,
     updated_at: p.updatedAt ?? new Date().toISOString(),
+  };
+}
+
+/**
+ * @typedef {Object} SavedQueryRow
+ * @property {string} city
+ * @property {string} category
+ * @property {number} days
+ * @property {number} query_limit
+ * @property {string} exclude_keywords_json
+ * @property {string|null} rank_guidance
+ * @property {string} created_at
+ * @property {string|null} last_searched_at
+ */
+
+/**
+ * @param {import('../../core/types.js').SavedQuery} q
+ */
+function savedQueryToRow(q) {
+  return {
+    city: q.city,
+    category: q.category,
+    days: q.days,
+    query_limit: q.limit,
+    exclude_keywords_json: JSON.stringify(q.excludeKeywords ?? []),
+    rank_guidance: q.rankGuidance ?? null,
+    created_at: q.createdAt,
+    last_searched_at: q.lastSearchedAt ?? null,
+  };
+}
+
+/**
+ * @param {SavedQueryRow} row
+ * @returns {import('../../core/types.js').SavedQuery}
+ */
+function rowToSavedQuery(row) {
+  return {
+    city: row.city,
+    category: row.category,
+    days: row.days,
+    limit: row.query_limit,
+    excludeKeywords: JSON.parse(row.exclude_keywords_json),
+    rankGuidance: row.rank_guidance ?? undefined,
+    createdAt: row.created_at,
+    lastSearchedAt: row.last_searched_at ?? undefined,
   };
 }
 

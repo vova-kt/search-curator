@@ -15,7 +15,12 @@ export function memory() {
   const preferences = new Map();
   /** @type {Map<string, string>} */
   const kv = new Map();
+  /** @type {Map<string, import('../../core/types.js').SavedQuery>} */
+  const savedQueries = new Map();
   let initialized = false;
+
+  /** @param {{ city: string, category: string }} ref */
+  const savedKey = (ref) => `${ref.city}|${ref.category}`;
 
   function ensureOpen() {
     if (!initialized) throw new Error('storage not initialized: call init() first');
@@ -30,6 +35,7 @@ export function memory() {
       events.clear();
       preferences.clear();
       kv.clear();
+      savedQueries.clear();
       initialized = false;
     },
 
@@ -90,6 +96,49 @@ export function memory() {
         return;
       }
       preferences.delete(scopeKey(scope));
+    },
+
+    async listSavedQueries() {
+      ensureOpen();
+      return [...savedQueries.values()].sort((a, b) => {
+        const al = a.lastSearchedAt;
+        const bl = b.lastSearchedAt;
+        if (al && bl) return bl.localeCompare(al);
+        if (al && !bl) return -1;
+        if (!al && bl) return 1;
+        return b.createdAt.localeCompare(a.createdAt);
+      });
+    },
+
+    async getSavedQuery(ref) {
+      ensureOpen();
+      return savedQueries.get(savedKey(ref));
+    },
+
+    async upsertSavedQuery(q) {
+      ensureOpen();
+      const key = savedKey(q);
+      const existing = savedQueries.get(key);
+      const next = {
+        ...q,
+        excludeKeywords: q.excludeKeywords ?? [],
+        createdAt: existing?.createdAt ?? q.createdAt ?? new Date().toISOString(),
+        lastSearchedAt: q.lastSearchedAt ?? existing?.lastSearchedAt,
+      };
+      savedQueries.set(key, next);
+      return next;
+    },
+
+    async deleteSavedQuery(ref) {
+      ensureOpen();
+      savedQueries.delete(savedKey(ref));
+    },
+
+    async touchSavedQuery(ref) {
+      ensureOpen();
+      const existing = savedQueries.get(savedKey(ref));
+      if (!existing) return;
+      savedQueries.set(savedKey(ref), { ...existing, lastSearchedAt: new Date().toISOString() });
     },
 
     async getKV(key) {

@@ -18,6 +18,8 @@ All three implement the same `StorageAdapter` interface (see [adapters.md](adapt
 
 Logical tables (mapped to object stores in IndexedDB):
 
+> **Saved queries.** The TUI persists user-defined searches in a `saved_queries` table (object store `savedQueries` on IndexedDB). Identity is `(city, category)`; days, limit, exclude-keywords and rank guidance are editable fields on the row. The curator's `curate()` calls `touchSavedQuery({ city, category })` after a successful run to bump `last_searched_at`. See the schema below.
+
 ### `events`
 
 | column        | type     | notes                                      |
@@ -52,6 +54,29 @@ Single row keyed by `scope` (`'global'` for unscoped, `'city:berlin'` or `'categ
 
 `getPreference()` returns the merge of `'global'` plus any scoped rows that match the current query (city/category). Scoped prefs override global.
 
+### `saved_queries`
+
+User-defined searches. PK is the composite `(city, category)` so the same topic in the same city has exactly one persisted entry.
+
+| column                  | type    | notes                                          |
+| ----------------------- | ------- | ---------------------------------------------- |
+| `city`                  | TEXT    | part of PK                                     |
+| `category`              | TEXT    | part of PK                                     |
+| `days`                  | INTEGER | rolling timeframe in days                      |
+| `query_limit`           | INTEGER | max events returned (column avoids the `LIMIT` keyword) |
+| `exclude_keywords_json` | TEXT    | JSON `string[]`; flows into `Query.filters.excludeKeywords` |
+| `rank_guidance`         | TEXT    | nullable free-text, appended to the rank LLM prompt |
+| `created_at`            | TEXT    | preserved across upserts                       |
+| `last_searched_at`      | TEXT    | nullable; bumped by `touchSavedQuery`          |
+
+Adapter contract (all three backends):
+
+- `listSavedQueries()` → ordered by `lastSearchedAt DESC NULLS LAST, createdAt DESC`.
+- `getSavedQuery({ city, category })`
+- `upsertSavedQuery(SavedQuery)` — preserves the original `createdAt` on update.
+- `deleteSavedQuery({ city, category })`
+- `touchSavedQuery({ city, category })` — no-op if no row matches, so `curate()` can call it unconditionally.
+
 ### `kv`
 
 Generic adapter-agnostic key-value table. Used by features that need persistent caches across runs (e.g. the `llmExpand` query-expansion strategy). Strings only — callers serialize their own JSON. No TTL; entries are explicitly bumped via `setKV`.
@@ -69,7 +94,7 @@ Adapter contract:
 ## Schema definition
 
 - **SQLite** ([src/adapters/storage/sqlite.js](../src/adapters/storage/sqlite.js)) — a single `SCHEMA` constant of `CREATE TABLE IF NOT EXISTS …` statements, executed on every `init()`. Idempotent: re-opening an existing db is a no-op.
-- **IndexedDB** ([src/adapters/storage/indexeddb.js](../src/adapters/storage/indexeddb.js)) — DB version `1`. `onupgradeneeded` creates the three object stores if absent.
+- **IndexedDB** ([src/adapters/storage/indexeddb.js](../src/adapters/storage/indexeddb.js)) — DB version `1`. `onupgradeneeded` creates the four object stores (`events`, `preferences`, `kv`, `savedQueries`) if absent. Per pre-`1.0` rules: when stores change, clear the IndexedDB origin rather than bumping the version.
 - **Memory** — Maps; nothing to create.
 
 When the schema needs to change during development, edit the constants in place and recreate local databases (delete the sqlite file, clear the IndexedDB origin). No migration history.

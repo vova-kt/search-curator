@@ -4,20 +4,29 @@
  * @property {Array<{ title: string, venue: { name: string, city: string }, subcategories?: string[] }>} liked
  * @property {Array<{ title: string, venue: { name: string, city: string }, subcategories?: string[] }>} disliked
  * @property {string} [derivedTraits]
+ * @property {string} [guidance]
  */
 
 /**
- * Rank candidates by likely user interest. Returns ordered ids and a per-event rationale.
+ * Combined filter + rank in one LLM call.
+ *
+ * The model is instructed to OMIT events that don't fit the user's preferences
+ * or guidance — omission is the filter signal — and to return the kept events
+ * ordered by likely interest with a brief rationale.
  *
  * @param {RankByPreferenceArgs} args
  * @returns {{ system: string, user: string }}
  */
-export function rankByPreferencePrompt({ candidates, liked, disliked, derivedTraits }) {
+export function rankByPreferencePrompt({ candidates, liked, disliked, derivedTraits, guidance }) {
   const system =
-    'You rank events by likelihood the user enjoys them, given prior likes and dislikes. ' +
-    'Highest interest first. Return strict JSON.';
+    'You filter and rank events for a user in a single pass. ' +
+    'Drop events that clearly do not fit the user\'s preferences or stated guidance — omit them from the output. ' +
+    'Order the kept events by likely interest, highest first. ' +
+    'For each kept event, write a rationale of about five words explaining the choice. ' +
+    'Return strict JSON.';
 
   const user = [
+    guidance ? `User guidance: ${guidance}` : null,
     derivedTraits ? `User traits: ${derivedTraits}` : null,
     '',
     'Liked examples:',
@@ -31,7 +40,8 @@ export function rankByPreferencePrompt({ candidates, liked, disliked, derivedTra
     '',
     'Return JSON of shape:',
     '{ "ranked": [ { "id": string, "rationale": string }, ... ] }',
-    'Include every candidate id exactly once.',
+    'Include only events the user is likely to enjoy. Omit poor matches.',
+    'Each rationale must be ~5 words.',
   ]
     .filter((l) => l !== null)
     .join('\n');

@@ -1,6 +1,12 @@
 /**
- * LLM ranking by user preference. Returns ordered events with rationales.
- * Falls back to original order if the LLM response is unusable.
+ * Combined LLM filter + rank. One call.
+ *
+ * Returns events ordered by likely user interest with a short rationale.
+ * Events the LLM omits from its response are dropped.
+ *
+ * Safety net: if the LLM returns an empty or malformed `ranked` array, we
+ * fall back to keeping the original list in original order — never collapse
+ * results to nothing on a bad response.
  */
 
 import { rankByPreferencePrompt } from '../../prompts/rankByPreference.js';
@@ -9,6 +15,12 @@ import { rankByPreferencePrompt } from '../../prompts/rankByPreference.js';
 export const llmRank = async (events, ctx) => {
   if (events.length <= 1) return events;
   const { liked, disliked, derivedTraits } = ctx.preference;
+  const guidance = ctx.query.rankGuidance;
+
+  // Skip the call when there's nothing for the LLM to act on.
+  if (liked.length === 0 && disliked.length === 0 && !derivedTraits && !guidance) {
+    return events;
+  }
 
   const candidates = events.map((e) => ({
     id: e.id,
@@ -24,6 +36,7 @@ export const llmRank = async (events, ctx) => {
     liked: liked.map((l) => ({ title: l.title, venue: l.venue, subcategories: l.subcategories })),
     disliked: disliked.map((d) => ({ title: d.title, venue: d.venue, subcategories: d.subcategories })),
     derivedTraits,
+    guidance,
   });
 
   const resp = await ctx.llm.chat({
@@ -47,7 +60,6 @@ export const llmRank = async (events, ctx) => {
     byId.delete(r.id);
     out.push({ ...e, rationale: r.rationale });
   }
-  // Append any events the LLM omitted, in their original order.
-  for (const remaining of byId.values()) out.push(remaining);
+  // Events left in `byId` were omitted by the LLM — they are dropped.
   return out;
 };

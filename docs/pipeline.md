@@ -52,13 +52,15 @@ Cross-session dedupe also consults `ctx.storage.getSeenIds()` to skip events alr
 
 **In**: `Event[]` → **Out**: `Event[]`
 
-Runs `ctx.strategies.filter` in order. Strategies receive the current `ctx.preference` and may drop events. Order matters: cheap rule-based filters first (`rules`), LLM-based last (`preferenceLLM`).
+Runs `ctx.strategies.filter` in order. Strategies receive the current `ctx.preference` and may drop events. Only `rules` (rule-based excludes) ships by default — soft, preference-based filtering is folded into the rank stage so it shares a single LLM call with ranking.
 
 ### 5. rank (`src/stages/rank.js`)
 
 **In**: `Event[]` → **Out**: `Event[]` (sorted, truncated to `ctx.query.limit`)
 
 Runs `ctx.strategies.rank` in order. Each strategy returns a re-ordered list. Last one wins. Truncation happens at the end.
+
+When `llmRank` is the active strategy it acts as a combined filter + rank pass: events the LLM judges to be poor matches against the user's preferences and `Query.rankGuidance` are omitted from the output (so the rank stage may shrink the list), and each kept event carries an ~5-word `rationale`. The default in `createCurator` is the cheap `byDate` strategy; the example TUI opts into `llmRank` explicitly so saved-query guidance and rationales flow through.
 
 ### 6. feedback (`src/stages/feedback.js`)
 

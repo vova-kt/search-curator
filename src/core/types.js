@@ -84,6 +84,30 @@
  * @property {Timeframe | { rolling: RollingTimeframe }} timeframe
  * @property {Partial<ExplicitFilters>} [filters]
  * @property {number} [limit]
+ * @property {string} [rankGuidance]   // free-text appended to the LLM rank prompt
+ */
+
+/**
+ * Persisted user-defined search. Identity is `(city, category)`.
+ *
+ * `excludeKeywords` and `rankGuidance` are merged into the runtime `Query`
+ * by the TUI when the user runs a saved query.
+ *
+ * @typedef {Object} SavedQuery
+ * @property {string} city
+ * @property {string} category
+ * @property {number} days
+ * @property {number} limit
+ * @property {string[]} excludeKeywords
+ * @property {string} [rankGuidance]
+ * @property {string} createdAt
+ * @property {string} [lastSearchedAt]
+ */
+
+/**
+ * @typedef {Object} SavedQueryRef
+ * @property {string} city
+ * @property {string} category
  */
 
 /**
@@ -165,6 +189,11 @@
  * @property {(scope?: PreferenceScope) => Promise<Preference>} getPreference
  * @property {(updater: (current: Preference) => Preference, scope?: PreferenceScope) => Promise<Preference>} updatePreference
  * @property {(scope?: PreferenceScope) => Promise<void>} clearPreference
+ * @property {() => Promise<SavedQuery[]>} listSavedQueries
+ * @property {(ref: SavedQueryRef) => Promise<SavedQuery | undefined>} getSavedQuery
+ * @property {(q: SavedQuery) => Promise<SavedQuery>} upsertSavedQuery
+ * @property {(ref: SavedQueryRef) => Promise<void>} deleteSavedQuery
+ * @property {(ref: SavedQueryRef) => Promise<void>} touchSavedQuery
  * @property {(key: string) => Promise<string | undefined>} getKV
  * @property {(key: string, value: string) => Promise<void>} setKV
  */

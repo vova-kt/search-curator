@@ -63,19 +63,20 @@ Cross-session dedupe: the dedupe stage also consults `ctx.storage.getSeenIds()` 
 
 Live in `src/strategies/filter/`.
 
-- **`rules`** — applies `Preference.explicitFilters` (`excludeKeywords`, `excludeVenues`, price bounds). Pure, no LLM.
+- **`rules`** — applies `Preference.explicitFilters` (`excludeKeywords`, `excludeVenues`, price bounds) plus any `Query.filters` overrides. Pure, no LLM.
   - Keyword matching is morphology-aware via [Snowball](http://snowball.tartarus.org/) stemming: title and description are tokenized on Unicode letters and each token is stemmed (Cyrillic → `russian`, otherwise → `english`); keywords are stemmed the same way and matched as space-bounded substrings of the stemmed haystack. So `excludeKeywords: ['концерт']` drops `'концерта'` / `'концертов'` / `'на концерте'`, and `['show']` drops `'shows'` / `'showing'`. Multi-word keywords (e.g. `'open mic'`) match contiguously after stemming.
   - Venue matching stays exact (post-`normalize`) — proper nouns shouldn't be stemmed.
-- **`preferenceLLM`** — sends the candidate list plus the user's liked/disliked examples and `derivedTraits` to the LLM with the `filterByPreference` prompt; drops events the LLM judges off-target.
 
-Order matters: cheap rule-based filters first, LLM-based last (so the LLM only sees a smaller set).
+There is intentionally no LLM-based filter strategy. Soft preference filtering happens inside `llmRank` (see below) — combining filter and rank into one LLM call halves the model spend per curation.
 
 ## Rank strategies
 
 Live in `src/strategies/rank/`.
 
 - **`byDate`** — chronological, soonest first. Always safe as a fallback.
-- **`llmRank`** — sends the (post-filter) list to the LLM with the `rankByPreference` prompt; expects an ordered array of event ids.
+- **`llmRank`** — combined filter + rank in one LLM call. Sends the (post-rules) list to the LLM with the `rankByPreference` prompt, along with the user's liked / disliked examples, `derivedTraits`, and any `Query.rankGuidance` free-text. The model is instructed to omit poor matches (that is the filter signal) and return the kept events ordered by likely interest, each annotated with an ~5-word `rationale` exposed on `Event.rationale`.
+  - Skipped when there are no liked/disliked examples, no `derivedTraits`, and no `rankGuidance` — there's nothing for the model to act on.
+  - Safety net: if the response is empty/malformed, falls back to the input list in original order rather than collapsing the result set to nothing.
 
 Last strategy wins the final order. Truncation to `query.limit` happens in the pipeline after ranking.
 

@@ -46,8 +46,7 @@ Conventions:
 | ------------------------------------- | ----------------------------------------------------------- |
 | `src/prompts/extractEvents.js`        | Convert web content into structured `Event` objects         |
 | `src/prompts/dedupeJudge.js`          | Decide whether two near-duplicate events are the same       |
-| `src/prompts/filterByPreference.js`   | Drop events that don't match user's traits and history      |
-| `src/prompts/rankByPreference.js`     | Reorder events by likely user interest                      |
+| `src/prompts/rankByPreference.js`     | Combined filter + rank: drop poor matches, order kept events by likely interest, attach a ~5-word rationale. Honors `rankGuidance` if present on the query. |
 | `src/prompts/derivePreferenceTraits.js` | Summarize liked/disliked events into a short trait string |
 | `src/prompts/expandQueries.js`        | Produce diverse web-search queries for the discover stage   |
 
