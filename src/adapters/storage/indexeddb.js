@@ -1,17 +1,21 @@
 /**
  * IndexedDB storage adapter for the browser.
  *
- * Mirrors the SQLite schema. Uses three object stores: `events`, `preferences`, `kv`.
+ * Mirrors the SQLite schema. Uses object stores: `events`, `eventStates`, `kv`, `savedQueries`.
  *
  * NOTE: keep this file dependency-free of `node:*` so it can be bundled for browsers.
  */
 
-import { scopeKey, effectiveScopeKeys, emptyPreference, mergePreferences } from './scope.js';
+import { EventState } from '../../core/eventState.js';
 
-const DB_VERSION = 2;
+/** @type {Set<import('../../core/types.js').EventStateValue>} */
+const VISIBLE_STATES = new Set([EventState.SHOWN, EventState.LIKED, EventState.DISLIKED]);
+const DB_VERSION = 3;
 
 /** @param {{ city: string, queryText: string }} ref */
 const savedKey = (ref) => `${ref.city}|${ref.queryText}`;
+/** @param {{ city: string, queryText: string, eventId: string }} v */
+const stateKey = (v) => `${v.city}|${v.queryText}|${v.eventId}`;
 
 /**
  * @param {{ name?: string }} [opts]
@@ -53,48 +57,47 @@ export function indexeddb({ name = 'events-curator' } = {}) {
       await txDone(tx);
     },
 
-    async markShown(ids, ref) {
+    async recordEventStates(items, ref) {
       const d = ensureOpen();
-      if (ids.length === 0) return;
+      if (items.length === 0) return;
       const now = new Date().toISOString();
-      const tx = d.transaction(['eventViews', 'events'], 'readwrite');
-      const views = tx.objectStore('eventViews');
-      const events = tx.objectStore('events');
-      for (const id of ids) {
-        const _key = `${ref.city}|${ref.queryText}|${id}`;
-        views.put({ _key, eventId: id, city: ref.city, queryText: ref.queryText, shownAt: now });
-        const e = await reqAsPromise(events.get(id));
-        if (e) events.put({ ...e, lastShownAt: now });
+      const tx = d.transaction(['eventStates', 'events'], 'readwrite');
+      const statesStore = tx.objectStore('eventStates');
+      const eventsStore = tx.objectStore('events');
+      for (const it of items) {
+        const _key = stateKey({ city: ref.city, queryText: ref.queryText, eventId: it.eventId });
+        // FOUND is a "first time we saw it" stamp — it never overwrites a later state.
+        if (it.state === EventState.FOUND) {
+          const existing = await reqAsPromise(statesStore.get(_key));
+          if (existing) continue;
+        }
+        statesStore.put({
+          _key,
+          eventId: it.eventId,
+          city: ref.city,
+          queryText: ref.queryText,
+          state: it.state,
+          reason: it.reason,
+          stateAt: now,
+        });
+        if (VISIBLE_STATES.has(it.state)) {
+          const e = await reqAsPromise(eventsStore.get(it.eventId));
+          if (e) eventsStore.put({ ...e, lastShownAt: now });
+        }
       }
       await txDone(tx);
     },
 
-    async getShownIds(ids) {
+    async getEventStates(ref) {
       const d = ensureOpen();
-      const tx = d.transaction('eventViews', 'readonly');
-      const store = tx.objectStore('eventViews');
-      const idx = store.index('eventId');
-      const out = new Set();
-      for (const id of ids) {
-        const cursor = /** @type {IDBKeyRange} */ (IDBKeyRange.only(id));
-        const got = await reqAsPromise(idx.openCursor(cursor));
-        if (got) out.add(id);
-      }
-      await txDone(tx);
-      return out;
-    },
-
-    async listShown(ref, opts) {
-      const d = ensureOpen();
-      const tx = d.transaction(['eventViews', 'events'], 'readonly');
-      const views = tx.objectStore('eventViews');
-      const idx = views.index('cityQueryShown');
-      // Range over [city, queryText, '\u0000'] .. [city, queryText, '\uffff']
+      const tx = d.transaction(['eventStates', 'events'], 'readonly');
+      const statesStore = tx.objectStore('eventStates');
+      const idx = statesStore.index('cityQueryStateAt');
       const range = IDBKeyRange.bound(
         [ref.city, ref.queryText, '\u0000'],
         [ref.city, ref.queryText, '\uffff'],
       );
-      /** @type {Array<{ eventId: string, shownAt: string }>} */
+      /** @type {Array<{ eventId: string, state: import('../../core/types.js').EventStateValue, reason?: string, stateAt: string }>} */
       const rows = [];
       await new Promise((resolve, reject) => {
         const req = idx.openCursor(range, 'prev');
@@ -102,8 +105,7 @@ export function indexeddb({ name = 'events-curator' } = {}) {
           const cursor = req.result;
           if (cursor) {
             const v = cursor.value;
-            rows.push({ eventId: v.eventId, shownAt: v.shownAt });
-            if (opts?.limit && rows.length >= opts.limit) { resolve(undefined); return; }
+            rows.push({ eventId: v.eventId, state: v.state, reason: v.reason, stateAt: v.stateAt });
             cursor.continue();
           } else {
             resolve(undefined);
@@ -111,11 +113,63 @@ export function indexeddb({ name = 'events-curator' } = {}) {
         };
         req.onerror = () => reject(req.error);
       });
-      const events = tx.objectStore('events');
+      const eventsStore = tx.objectStore('events');
+      /** @type {import('../../core/types.js').EventStateRecord[]} */
+      const out = [];
+      for (const r of rows) {
+        const e = await reqAsPromise(eventsStore.get(r.eventId));
+        if (e) out.push({ event: e, state: r.state, reason: r.reason, stateAt: r.stateAt });
+      }
+      await txDone(tx);
+      return out;
+    },
+
+    async getShownIds(ids, ref) {
+      const d = ensureOpen();
+      const tx = d.transaction('eventStates', 'readonly');
+      const store = tx.objectStore('eventStates');
+      const out = new Set();
+      for (const id of ids) {
+        const row = await reqAsPromise(store.get(stateKey({ city: ref.city, queryText: ref.queryText, eventId: id })));
+        if (row && VISIBLE_STATES.has(row.state)) out.add(id);
+      }
+      await txDone(tx);
+      return out;
+    },
+
+    async listShown(ref, opts) {
+      const d = ensureOpen();
+      const tx = d.transaction(['eventStates', 'events'], 'readonly');
+      const statesStore = tx.objectStore('eventStates');
+      const idx = statesStore.index('cityQueryStateAt');
+      const range = IDBKeyRange.bound(
+        [ref.city, ref.queryText, '\u0000'],
+        [ref.city, ref.queryText, '\uffff'],
+      );
+      /** @type {Array<{ eventId: string, stateAt: string }>} */
+      const rows = [];
+      await new Promise((resolve, reject) => {
+        const req = idx.openCursor(range, 'prev');
+        req.onsuccess = () => {
+          const cursor = req.result;
+          if (cursor) {
+            const v = cursor.value;
+            if (VISIBLE_STATES.has(v.state)) {
+              rows.push({ eventId: v.eventId, stateAt: v.stateAt });
+              if (opts?.limit && rows.length >= opts.limit) { resolve(undefined); return; }
+            }
+            cursor.continue();
+          } else {
+            resolve(undefined);
+          }
+        };
+        req.onerror = () => reject(req.error);
+      });
+      const eventsStore = tx.objectStore('events');
       /** @type {import('../../core/types.js').Event[]} */
       const out = [];
       for (const r of rows) {
-        const e = await reqAsPromise(events.get(r.eventId));
+        const e = await reqAsPromise(eventsStore.get(r.eventId));
         if (e) out.push(e);
       }
       await txDone(tx);
@@ -135,48 +189,9 @@ export function indexeddb({ name = 'events-curator' } = {}) {
       return out;
     },
 
-    async getPreference(scope) {
+    async listSavedQueries(opts) {
       const d = ensureOpen();
-      const keys = effectiveScopeKeys(scope);
-      const tx = d.transaction('preferences', 'readonly');
-      const store = tx.objectStore('preferences');
-      const rows = [];
-      for (const k of keys) {
-        const row = await reqAsPromise(store.get(k));
-        if (row) rows.push(row);
-      }
-      await txDone(tx);
-      return mergePreferences(rows.length ? rows : [emptyPreference()]);
-    },
-
-    async updatePreference(updater, scope) {
-      const d = ensureOpen();
-      const key = scopeKey(scope);
-      const tx = d.transaction('preferences', 'readwrite');
-      const store = tx.objectStore('preferences');
-      const existing = await reqAsPromise(store.get(key));
-      const current = existing ?? emptyPreference();
-      const next = updater(current);
-      next.updatedAt = new Date().toISOString();
-      store.put({ ...next, scope: key });
-      await txDone(tx);
-      return next;
-    },
-
-    async clearPreference(scope) {
-      const d = ensureOpen();
-      const tx = d.transaction('preferences', 'readwrite');
-      const store = tx.objectStore('preferences');
-      if (!scope || (!scope.city && !scope.queryText)) {
-        store.clear();
-      } else {
-        store.delete(scopeKey(scope));
-      }
-      await txDone(tx);
-    },
-
-    async listSavedQueries() {
-      const d = ensureOpen();
+      const includeArchived = opts?.includeArchived ?? false;
       const tx = d.transaction('savedQueries', 'readonly');
       const all = /** @type {Array<import('../../core/types.js').SavedQuery & { _key: string }>} */ (
         await reqAsPromise(tx.objectStore('savedQueries').getAll())
@@ -184,6 +199,7 @@ export function indexeddb({ name = 'events-curator' } = {}) {
       await txDone(tx);
       return all
         .map(({ _key, ...q }) => q)
+        .filter((q) => includeArchived || !q.archived)
         .sort((a, b) => {
           const al = a.lastSearchedAt;
           const bl = b.lastSearchedAt;
@@ -212,10 +228,13 @@ export function indexeddb({ name = 'events-curator' } = {}) {
       const store = tx.objectStore('savedQueries');
       const _key = savedKey(q);
       const existing = await reqAsPromise(store.get(_key));
+      const now = new Date().toISOString();
       const next = {
         ...q,
         excludeKeywords: q.excludeKeywords ?? [],
-        createdAt: existing?.createdAt ?? q.createdAt ?? new Date().toISOString(),
+        archived: q.archived ?? false,
+        createdAt: existing?.createdAt ?? q.createdAt ?? now,
+        updatedAt: now,
         lastSearchedAt: q.lastSearchedAt ?? existing?.lastSearchedAt,
       };
       store.put({ ...next, _key });
@@ -267,25 +286,29 @@ function openDb(name) {
     const req = indexedDB.open(name, DB_VERSION);
     req.onupgradeneeded = () => {
       const d = req.result;
+      // Drop legacy stores from earlier schema versions.
+      if (d.objectStoreNames.contains('preferences')) d.deleteObjectStore('preferences');
+      if (d.objectStoreNames.contains('eventViews')) d.deleteObjectStore('eventViews');
+      if (d.objectStoreNames.contains('eventStates')) d.deleteObjectStore('eventStates');
+
       const keyPaths = {
         events: 'id',
-        preferences: 'scope',
         kv: 'key',
         savedQueries: '_key',
-        eventViews: '_key',
+        eventStates: '_key',
       };
       for (const [store, keyPath] of Object.entries(keyPaths)) {
         if (!d.objectStoreNames.contains(store)) {
           d.createObjectStore(store, { keyPath });
         }
       }
-      const views = req.transaction?.objectStore('eventViews');
-      if (views) {
-        if (!views.indexNames.contains('eventId')) {
-          views.createIndex('eventId', 'eventId', { unique: false });
+      const states = req.transaction?.objectStore('eventStates');
+      if (states) {
+        if (!states.indexNames.contains('eventId')) {
+          states.createIndex('eventId', 'eventId', { unique: false });
         }
-        if (!views.indexNames.contains('cityQueryShown')) {
-          views.createIndex('cityQueryShown', ['city', 'queryText', 'shownAt'], { unique: false });
+        if (!states.indexNames.contains('cityQueryStateAt')) {
+          states.createIndex('cityQueryStateAt', ['city', 'queryText', 'stateAt'], { unique: false });
         }
       }
     };

@@ -2,85 +2,59 @@
 
 Preferences are how the curator gets better with use. The user marks events as liked or disliked; the curator uses those signals to filter and rank future searches.
 
+There is no separate `Preference` object. Per-event signal lives on the `event_states` junction (one row per `(event_id, city, query_text)`); per-saved-query taste configuration lives on the matching `SavedQuery` row. See [storage.md](storage.md) for the schema.
+
 The `config.preferences.*` tunables referenced below (`deriveTraits`, `traitsRefreshThreshold`) are defined with their defaults in [src/core/config.js](../src/core/config.js).
 
-## Shape
+## Event state
 
-```js
-/**
- * @typedef {Object} EventRef
- * @property {string} id
- * @property {string} title
- * @property {{ name: string, city: string }} venue
- * @property {string} startsAt
- * @property {string} [reason]   // user note; only attached to disliked entries today
- */
+Every event the pipeline produces is recorded with one of four states. The enum is defined in [src/core/eventState.js](../src/core/eventState.js).
 
-/**
- * @typedef {Object} ExplicitFilters
- * @property {string[]} [excludeKeywords]
- * @property {string[]} [excludeVenues]
- * @property {{ min?: number, max?: number, currency?: string }} [price]
- * @property {boolean} [freeOnly]
- */
+- **Found** — pipeline produced it; not yet shown to the user. Written by `pipeline.js` after `upsertEvents`.
+- **Shown** — surfaced to the user (e.g. the TUI rendered the page). Written via `recordFeedback({ state: SHOWN, ... })`.
+- **Liked** / **Disliked** — explicit user signal. Disliked rows may carry a `reason` string.
 
-/**
- * @typedef {Object} Preference
- * @property {EventRef[]} liked
- * @property {EventRef[]} disliked
- * @property {ExplicitFilters} explicitFilters
- * @property {string} [derivedTraits]   // LLM summary, optional
- * @property {string} [updatedAt]
- */
-```
+Transitions: `Found → Shown → {Liked, Disliked}`. Re-curating writes `Found`, but storage adapters never overwrite a non-Found row with `Found` — once a row has been seen or rated, that signal sticks.
+
+For cross-session dedupe, `getShownIds(ids, ref)` returns the subset whose state ∈ {Shown, Liked, Disliked} for the given saved-query ref. Per-ref: a like in Berlin/comedy doesn't suppress the same event under Berlin/jazz.
 
 ## Capture
 
-`curator.recordFeedback({ liked: [id, ...], disliked: [id, ...], reasons?: { [id]: string } })`:
+`curator.recordFeedback({ ids, state, reasons?, ref? })`:
 
-1. Looks up the events from the last result set (or storage if not in memory).
-2. Builds `EventRef`s from the matched events. For ids in `disliked` with a non-empty `reasons[id]`, the trimmed string is attached as `EventRef.reason`.
-3. Merges into the current scope's preference (deduping by `id`).
-4. Optionally re-derives `derivedTraits` if `config.preferences.deriveTraits === true`.
-5. Persists.
+- `ids` — events to transition.
+- `state` — one value from the `EventState` enum. One state per call; split likes and dislikes into two calls.
+- `reasons` — optional `{ [id]: string }`, only meaningful for `state === DISLIKED`. Empty/whitespace strings are ignored.
+- `ref` — `{ city, queryText }`. Defaults to the last `curate()` ref if omitted.
 
-The `reasons` map is optional and only meaningful for disliked ids. The TUI captures it inline via a small text-input prompt that opens when the user toggles dislike on; pressing Enter commits (empty is fine — the dislike still records), Esc cancels the dislike entirely. Reasons flow into the `rankByPreference` and `derivePreferenceTraits` LLM prompts so the model can apply the user's stated principle, not just the literal example.
+A single `recordEventStates` write goes to storage. When `state ∈ {LIKED, DISLIKED}` and `config.preferences.deriveTraits === true`, the feedback stage counts liked + disliked rows for the ref; if the count meets `config.preferences.traitsRefreshThreshold`, it runs `derivePreferenceTraits` and persists the result onto `SavedQuery.derivedTraits`.
+
+The TUI captures dislike reasons inline via a small text-input prompt that opens when the user toggles dislike on; pressing Enter commits (empty is fine — the dislike still records), Esc cancels the dislike entirely.
+
+## Taste configuration on SavedQuery
+
+A `SavedQuery` carries the per-query taste profile alongside its identity:
+
+- `excludeKeywords: string[]` — keyword exclusion (matched with stemming; see [strategies.md](strategies.md)).
+- `excludeVenues: string[]` — venue-name exclusion.
+- `price: { min?, max?, currency? }`, `freeOnly: boolean` — price bounds.
+- `guidance?: string` — free-form prompt addendum that flows into `llmRank`.
+- `derivedTraits?: string` — LLM-generated taste summary (see below).
+- `archived: boolean` — soft delete; archived rows are hidden from `listSavedQueries()` unless `{ includeArchived: true }`.
+
+These flow into ranking via `ctx.query.savedQuery`, which `curate()` auto-loads from storage if not already attached.
 
 ## Use
 
 During curation:
 
-- `filter` strategies receive `ctx.preference`. `rules` reads `explicitFilters` (and any `Query.filters` overrides).
-- `rank` strategies use the same. `llmRank` is a combined filter + rank pass: it weights events that resemble `liked` examples, de-weights those resembling `disliked`, and omits clearly-poor matches against `derivedTraits` and `Query.guidance` from its output.
-
-## Scoping
-
-Preferences can be **global** or scoped by `city` and/or `queryText`. Stored as separate rows keyed by scope; `getPreference()` returns the merge of `global` and any matching scoped rows, with scoped overriding global.
-
-Example: in Berlin a user may like intimate stand-up and dislike open mics, but in Vienna prefer big-room jazz. Two scopes, no contradiction.
-
-Scope key formats:
-
-- `'global'`
-- `'city:<lowercased-city>'`
-- `'query:<lowercased-queryText>'`
-- `'city:<lowercased-city>|query:<lowercased-queryText>'`
-
-## Clearing
-
-`curator.clearPreferences(scope?)`:
-
-- No arg: wipes all preference rows.
-- `{ city }`: clears `'city:<city>'`.
-- `{ queryText }`: clears `'query:<queryText>'`.
-- `{ city, queryText }`: clears the combined-scope row.
-
-Cached events are not deleted — see [storage.md](storage.md) for why.
+- `rules` (rank stage) reads `excludeKeywords`, `excludeVenues`, `price`, `freeOnly` from `ctx.query.savedQuery`. With no saved query, no rule-filtering applies.
+- `llmRank` reads `derivedTraits` from `ctx.query.savedQuery` and pulls liked/disliked examples by calling `ctx.storage.getEventStates(ref)`. It weights events that resemble liked examples, de-weights those resembling dislikes (with reasons in scope), and omits clearly-poor matches against `derivedTraits` and `Query.guidance` from its output.
 
 ## Derived traits
 
-`derivedTraits` is an optional short string ("intimate venues, alt-comedy, weeknights") generated by the LLM from liked/disliked examples. Cheaper to feed into prompts than dozens of `EventRef`s.
+`derivedTraits` is an optional short string ("intimate venues, alt-comedy, weeknights") generated by the LLM from liked/disliked examples for the saved query. Cheaper to feed into prompts than dozens of liked/disliked events.
 
-It is **derived**, not authoritative — a stale value never breaks correctness, only ranking quality. We recompute it lazily when liked/disliked grows past `config.preferences.traitsRefreshThreshold` events.
+It is **derived**, not authoritative — a stale value never breaks correctness, only ranking quality. The feedback stage recomputes it lazily when the count of LIKED + DISLIKED rows for the saved query reaches `config.preferences.traitsRefreshThreshold`.
 
-The corresponding prompt is `src/prompts/derivePreferenceTraits.js`.
+The corresponding prompt is [src/prompts/derivePreferenceTraits.js](../src/prompts/derivePreferenceTraits.js).

@@ -15,8 +15,7 @@ ctx = {
   storage,       // StorageAdapter
   strategies,    // { queryExpansion[], dedupe[], rank[] }
   config,        // resolved config (defaults + overrides)
-  query,         // current Query
-  preference,    // current Preference, loaded once at pipeline start
+  query,         // current Query (with `savedQuery` auto-attached if a matching SavedQuery exists)
   signal,        // optional AbortSignal
   logger,        // levelled logger built from config.logging.level
 }
@@ -49,21 +48,21 @@ Hits are grouped into batches whose combined estimated input tokens stay within 
 
 Runs `ctx.strategies.dedupe` in order. Each strategy is a function `(events, ctx) => Event[]` that may merge or drop duplicates. Stable order across runs: `byId` first (cheap, exact on content hash), then `fuzzyTitle`, then optional `llmJudge` for borderline cases.
 
-Cross-session dedupe also consults `ctx.storage.getShownIds()` to skip events the user has already been shown in past sessions (relevant for rolling timeframes). "Shown" is distinct from "stored": events still land in storage on every `curate()` (so `getEvents()` and feedback can resolve them), but only events the consumer explicitly persists via `curator.markShown(ids, { city, queryText })` are filtered out by dedupe. Discarded results from `curate()` and events that were never paged into in the UI stay eligible to resurface later.
+Cross-session dedupe also consults `ctx.storage.getShownIds(ids, { city, queryText })` to skip events the user has already been shown for the same saved query in past sessions (relevant for rolling timeframes). "Shown" is distinct from "stored": every event written by the pipeline gets a `Found` row in `event_states` (so `getEvents()` and feedback can resolve them), but `getShownIds` returns only ids whose state ∈ {Shown, Liked, Disliked} for the given ref. Recording happens via `curator.recordFeedback({ ids, state, ref })`. Discarded results from `curate()` and events that were never paged into in the UI stay eligible to resurface later. The set is per-ref so a like in Berlin/comedy doesn't suppress the same event under Berlin/jazz.
 
 ### 4. rank (`src/stages/rank.js`)
 
 **In**: `Event[]` → **Out**: `Event[]` (filtered + sorted)
 
-Runs `ctx.strategies.rank` in order — there is no separate filter stage. Strategies receive the current `ctx.preference` and may both drop events and reorder them. Last one wins. The rank stage itself does not truncate — the orchestrator slices to `ctx.query.limit ?? ctx.config.pipeline.defaultLimit` after rank returns.
+Runs `ctx.strategies.rank` in order — there is no separate filter stage. Strategies may both drop events and reorder them, reading taste configuration from `ctx.query.savedQuery` and prior signal from `ctx.storage.getEventStates(ref)` as needed. Last one wins. The rank stage itself does not truncate — the orchestrator slices to `ctx.query.limit ?? ctx.config.pipeline.defaultLimit` after rank returns.
 
-The default rank chain in `createCurator` is `[rules, byDate]`: `rules` applies hard rule-based excludes (`excludeKeywords`, `excludeVenues`, price bounds), then `byDate` orders chronologically. The example TUI opts into `[rules, llmRank]`: `rules` strips hard excludes first, then `llmRank` runs as a combined filter + rank LLM pass — events it judges to be poor matches against the user's preferences and `Query.guidance` (the natural-language filter + rank field) are omitted from the output (so the rank stage may shrink the list), and each kept event carries an ~5-word `rationale`.
+The default rank chain in `createCurator` is `[rules, byDate]`: `rules` applies hard rule-based excludes (`excludeKeywords`, `excludeVenues`, price bounds, `freeOnly`) read from `ctx.query.savedQuery`, then `byDate` orders chronologically. The example TUI opts into `[rules, llmRank]`: `rules` strips hard excludes first, then `llmRank` runs as a combined filter + rank LLM pass — events it judges to be poor matches against the user's prior likes/dislikes and `Query.guidance` are omitted from the output (so the rank stage may shrink the list), and each kept event carries an ~5-word `rationale`.
 
 ### 5. feedback (`src/stages/feedback.js`)
 
-**In**: `{ liked: string[], disliked: string[] }`, last result set → **Out**: updated preference persisted to storage.
+**In**: `FeedbackInput = { ids, state, reasons?, ref }` → **Out**: state rows persisted to storage; `SavedQuery.derivedTraits` optionally refreshed.
 
-Not part of `curate()` — invoked via `curator.recordFeedback()`. Pulls liked/disliked events from the last result set, extracts signals (venue, time-of-day, price band), updates `Preference.likedEvents` / `dislikedEvents`, and optionally re-derives `Preference.derivedTraits` via LLM.
+Not part of `curate()` — invoked via `curator.recordFeedback()`. One state per call (split likes and dislikes into two calls). Writes `event_states` rows via `recordEventStates`. When `state ∈ {LIKED, DISLIKED}` and `config.preferences.deriveTraits === true`, counts the saved query's LIKED + DISLIKED rows; if the count meets `config.preferences.traitsRefreshThreshold`, runs `derivePreferenceTraits` and persists the result onto the matching `SavedQuery.derivedTraits`.
 
 ## Orchestration
 
@@ -76,12 +75,20 @@ async function runCuration(ctx) {
   events = await dedupe(events, ctx);          // orchestrator emits dedupe start/done
   events = await rank(events, ctx);            // orchestrator emits rank start/done — strategies drop + reorder
   events = events.slice(0, ctx.query.limit ?? ctx.config.pipeline.defaultLimit);
-  if (events.length > 0) await ctx.storage.upsertEvents(events); // orchestrator emits persist start/done
+  if (events.length > 0) {
+    await ctx.storage.upsertEvents(events);
+    // Record Found rows for this saved-query ref. recordEventStates never
+    // overwrites a non-Found row, so prior Shown/Liked/Disliked sticks.
+    await ctx.storage.recordEventStates(
+      events.map((e) => ({ eventId: e.id, state: 'found' })),
+      { city: ctx.query.city, queryText: ctx.query.queryText },
+    );
+  }
   return events;
 }
 ```
 
-The orchestrator persists events to storage but does **not** mark them shown — that is the consumer's job, since only the UI knows which events the user actually saw. Call `curator.markShown(ids, { city, queryText })` from the consumer (e.g., per page rendered in the TUI, or once after printing in a one-shot script) to populate the `event_views` junction that the dedupe stage reads from. Progress events are emitted via `ctx.onProgress` if set — see "Progress events" below.
+The orchestrator persists events and writes `Found` state rows but does **not** mark them shown — that is the consumer's job, since only the UI knows which events the user actually saw. Call `curator.recordFeedback({ ids, state: SHOWN, ref })` from the consumer (e.g., per page rendered in the TUI, or once after printing in a one-shot script) to transition rows to `Shown` so the dedupe stage suppresses them on the next run. Progress events are emitted via `ctx.onProgress` if set — see "Progress events" below.
 
 ## Progress events
 

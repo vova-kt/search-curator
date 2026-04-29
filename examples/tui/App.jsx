@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
-import { createCurator, llmRank, rules } from '../../src/index.js';
+import { createCurator, EventState, llmRank, rules } from '../../src/index.js';
 import { sqlite } from '../../src/adapters/storage/sqlite.js';
 import { memory } from '../../src/adapters/storage/memory.js';
 import { openai } from '../../src/adapters/llm/openai.js';
@@ -138,8 +138,8 @@ export default function App({ dry }) {
         queryText: q.queryText,
         timeframe: { rolling: { days: q.days } },
         limit: q.limit,
-        filters: { excludeKeywords: q.excludeKeywords ?? [] },
         guidance: q.guidance,
+        savedQuery: q,
       }, { onProgress });
       setResults(events);
       setResultsCursor(0);
@@ -173,19 +173,36 @@ export default function App({ dry }) {
     setStatus(`deleted ${ref.city} / ${ref.queryText}`);
   };
 
+  const handleArchiveQuery = async (q) => {
+    await curator.upsertSavedQuery({ ...q, archived: true });
+    await refreshSaved();
+    setStatus(`archived ${q.city} / ${q.queryText}`);
+  };
+
   const handleEditKeys = () => setScreen(Screen.KEYS);
 
   const handleFeedback = async ({ liked, disliked, reasons }) => {
-    await curator.recordFeedback({ liked, disliked, reasons });
+    if (!activeQuery) return;
+    const ref = { city: activeQuery.city, queryText: activeQuery.queryText };
+    if (liked.length > 0) {
+      await curator.recordFeedback({ ids: liked, state: EventState.LIKED, ref });
+    }
+    if (disliked.length > 0) {
+      await curator.recordFeedback({ ids: disliked, state: EventState.DISLIKED, reasons, ref });
+    }
     setStatus(`saved feedback (${liked.length} liked, ${disliked.length} disliked)`);
     setActiveQuery(null);
     setScreen(Screen.SAVED_LIST);
   };
 
   const handlePageVisible = async (ids) => {
-    if (!curator || !activeQuery) return;
+    if (!curator || !activeQuery || ids.length === 0) return;
     try {
-      await curator.markShown(ids, { city: activeQuery.city, queryText: activeQuery.queryText });
+      await curator.recordFeedback({
+        ids,
+        state: EventState.SHOWN,
+        ref: { city: activeQuery.city, queryText: activeQuery.queryText },
+      });
     } catch {
       // Marking is best-effort. A storage hiccup mustn't crash the TUI mid-scroll.
     }
@@ -248,6 +265,7 @@ export default function App({ dry }) {
             onEdit={(q) => { setEditing(q); setScreen(Screen.EDITOR); }}
             onNew={() => { setEditing(null); setScreen(Screen.EDITOR); }}
             onDelete={handleDeleteQuery}
+            onArchive={handleArchiveQuery}
             onHistory={handleOpenHistory}
             onEditKeys={dry ? null : handleEditKeys}
             onQuit={handleQuit}

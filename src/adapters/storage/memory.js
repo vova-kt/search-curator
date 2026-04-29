@@ -3,7 +3,10 @@
  * Mirrors the SQLite adapter's behavior.
  */
 
-import { scopeKey, effectiveScopeKeys, emptyPreference, mergePreferences } from './scope.js';
+import { EventState } from '../../core/eventState.js';
+
+/** @type {Set<import('../../core/types.js').EventStateValue>} */
+const VISIBLE_STATES = new Set([EventState.SHOWN, EventState.LIKED, EventState.DISLIKED]);
 
 /**
  * @returns {import('../../core/types.js').StorageAdapter}
@@ -11,21 +14,23 @@ import { scopeKey, effectiveScopeKeys, emptyPreference, mergePreferences } from 
 export function memory() {
   /** @type {Map<string, import('../../core/types.js').Event>} */
   const events = new Map();
-  /** @type {Map<string, import('../../core/types.js').Preference>} */
-  const preferences = new Map();
   /** @type {Map<string, string>} */
   const kv = new Map();
   /** @type {Map<string, import('../../core/types.js').SavedQuery>} */
   const savedQueries = new Map();
-  // event_views junction: key `${city}|${queryText}|${eventId}` -> shownAt ISO.
-  /** @type {Map<string, { eventId: string, city: string, queryText: string, shownAt: string }>} */
-  const views = new Map();
+  /**
+   * event_states junction:
+   * key `${city}|${queryText}|${eventId}` ->
+   *   { eventId, city, queryText, state, reason?, stateAt }
+   * @type {Map<string, { eventId: string, city: string, queryText: string, state: import('../../core/types.js').EventStateValue, reason?: string, stateAt: string }>}
+   */
+  const states = new Map();
   let initialized = false;
 
   /** @param {{ city: string, queryText: string }} ref */
   const savedKey = (ref) => `${ref.city}|${ref.queryText}`;
   /** @param {{ city: string, queryText: string, eventId: string }} v */
-  const viewKey = (v) => `${v.city}|${v.queryText}|${v.eventId}`;
+  const stateKey = (v) => `${v.city}|${v.queryText}|${v.eventId}`;
 
   function ensureOpen() {
     if (!initialized) throw new Error('storage not initialized: call init() first');
@@ -38,10 +43,9 @@ export function memory() {
 
     async close() {
       events.clear();
-      preferences.clear();
       kv.clear();
       savedQueries.clear();
-      views.clear();
+      states.clear();
       initialized = false;
     },
 
@@ -59,37 +63,64 @@ export function memory() {
       }
     },
 
-    async markShown(ids, ref) {
+    async recordEventStates(items, ref) {
       ensureOpen();
+      if (items.length === 0) return;
       const now = new Date().toISOString();
-      for (const id of ids) {
-        views.set(viewKey({ city: ref.city, queryText: ref.queryText, eventId: id }), {
-          eventId: id, city: ref.city, queryText: ref.queryText, shownAt: now,
+      for (const it of items) {
+        const key = stateKey({ city: ref.city, queryText: ref.queryText, eventId: it.eventId });
+        // FOUND is a "first time we saw it" stamp — it never overwrites a later state.
+        if (it.state === EventState.FOUND && states.has(key)) continue;
+        states.set(key, {
+          eventId: it.eventId,
+          city: ref.city,
+          queryText: ref.queryText,
+          state: it.state,
+          reason: it.reason,
+          stateAt: now,
         });
-        const existing = events.get(id);
-        if (existing) events.set(id, { ...existing, lastShownAt: now });
+        if (VISIBLE_STATES.has(it.state)) {
+          const existing = events.get(it.eventId);
+          if (existing) events.set(it.eventId, { ...existing, lastShownAt: now });
+        }
       }
     },
 
-    async getShownIds(ids) {
+    async getEventStates(ref) {
       ensureOpen();
-      const set = new Set();
-      for (const v of views.values()) set.add(v.eventId);
+      const matches = [...states.values()]
+        .filter((s) => s.city === ref.city && s.queryText === ref.queryText)
+        .sort((a, b) => b.stateAt.localeCompare(a.stateAt));
+      /** @type {import('../../core/types.js').EventStateRecord[]} */
+      const out = [];
+      for (const s of matches) {
+        const e = events.get(s.eventId);
+        if (!e) continue;
+        out.push({ event: e, state: s.state, reason: s.reason, stateAt: s.stateAt });
+      }
+      return out;
+    },
+
+    async getShownIds(ids, ref) {
+      ensureOpen();
       const out = new Set();
-      for (const id of ids) if (set.has(id)) out.add(id);
+      for (const id of ids) {
+        const s = states.get(stateKey({ city: ref.city, queryText: ref.queryText, eventId: id }));
+        if (s && VISIBLE_STATES.has(s.state)) out.add(id);
+      }
       return out;
     },
 
     async listShown(ref, opts) {
       ensureOpen();
-      const matches = [...views.values()]
-        .filter((v) => v.city === ref.city && v.queryText === ref.queryText)
-        .sort((a, b) => b.shownAt.localeCompare(a.shownAt));
+      const matches = [...states.values()]
+        .filter((s) => s.city === ref.city && s.queryText === ref.queryText && VISIBLE_STATES.has(s.state))
+        .sort((a, b) => b.stateAt.localeCompare(a.stateAt));
       const limited = opts?.limit ? matches.slice(0, opts.limit) : matches;
       /** @type {import('../../core/types.js').Event[]} */
       const out = [];
-      for (const v of limited) {
-        const e = events.get(v.eventId);
+      for (const s of limited) {
+        const e = events.get(s.eventId);
         if (e) out.push(e);
       }
       return out;
@@ -106,44 +137,19 @@ export function memory() {
       return out;
     },
 
-    async getPreference(scope) {
+    async listSavedQueries(opts) {
       ensureOpen();
-      const keys = effectiveScopeKeys(scope);
-      const rows = keys
-        .map((k) => preferences.get(k))
-        .filter(/** @returns {p is import('../../core/types.js').Preference} */ (p) => Boolean(p));
-      return mergePreferences(rows.length ? rows : [emptyPreference()]);
-    },
-
-    async updatePreference(updater, scope) {
-      ensureOpen();
-      const key = scopeKey(scope);
-      const current = preferences.get(key) ?? emptyPreference();
-      const next = updater(current);
-      next.updatedAt = new Date().toISOString();
-      preferences.set(key, next);
-      return next;
-    },
-
-    async clearPreference(scope) {
-      ensureOpen();
-      if (!scope || (!scope.city && !scope.queryText)) {
-        preferences.clear();
-        return;
-      }
-      preferences.delete(scopeKey(scope));
-    },
-
-    async listSavedQueries() {
-      ensureOpen();
-      return [...savedQueries.values()].sort((a, b) => {
-        const al = a.lastSearchedAt;
-        const bl = b.lastSearchedAt;
-        if (al && bl) return bl.localeCompare(al);
-        if (al && !bl) return -1;
-        if (!al && bl) return 1;
-        return b.createdAt.localeCompare(a.createdAt);
-      });
+      const includeArchived = opts?.includeArchived ?? false;
+      return [...savedQueries.values()]
+        .filter((q) => includeArchived || !q.archived)
+        .sort((a, b) => {
+          const al = a.lastSearchedAt;
+          const bl = b.lastSearchedAt;
+          if (al && bl) return bl.localeCompare(al);
+          if (al && !bl) return -1;
+          if (!al && bl) return 1;
+          return b.createdAt.localeCompare(a.createdAt);
+        });
     },
 
     async getSavedQuery(ref) {
@@ -155,10 +161,13 @@ export function memory() {
       ensureOpen();
       const key = savedKey(q);
       const existing = savedQueries.get(key);
+      const now = new Date().toISOString();
       const next = {
         ...q,
         excludeKeywords: q.excludeKeywords ?? [],
-        createdAt: existing?.createdAt ?? q.createdAt ?? new Date().toISOString(),
+        archived: q.archived ?? false,
+        createdAt: existing?.createdAt ?? q.createdAt ?? now,
+        updatedAt: now,
         lastSearchedAt: q.lastSearchedAt ?? existing?.lastSearchedAt,
       };
       savedQueries.set(key, next);

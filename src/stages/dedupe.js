@@ -20,10 +20,10 @@ export async function dedupe(events, ctx) {
       log.warn(`[dedupe] strategy failed:`, err instanceof Error ? err.message : err);
     }
   }
-  // Cross-session: drop ids that have already been shown to the user in any
-  // prior session (via storage.markShown). Events sitting in storage that were
-  // never actually shown remain eligible to surface again.
-  const shown = await ctx.storage.getShownIds(current.map((e) => e.id));
+  // Cross-session: drop ids already shown to (or rated by) the user under this saved query.
+  // Events sitting in storage in only the FOUND state remain eligible to surface again.
+  const ref = { city: ctx.query.city, queryText: ctx.query.queryText };
+  const shown = await ctx.storage.getShownIds(current.map((e) => e.id), ref);
   if (shown.size === 0) return current;
   const out = current.filter((e) => !shown.has(e.id));
   log.debug(`[dedupe] cross-session: dropped ${current.length - out.length} already-shown events`);

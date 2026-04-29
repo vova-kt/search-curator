@@ -56,10 +56,10 @@ The TUI runs fullscreen — it switches to the terminal's alternate-screen buffe
 The TUI is **list-first**: after boot you land on the saved-searches list. From there you run, edit, create, or delete a search. Identity for a saved search is `(city, queryText)`. Editing the query text replaces the row in place.
 
 1. **Keys** — only shown when keys are missing. Tab through fields, last `enter` saves.
-2. **Saved searches** — list of persisted searches with their last-run timestamp (relative). `↑/↓` move, `enter` runs the selected entry, `[e]` opens the editor, `[n]` creates a new one, `[d]` deletes (asks for `y/N`), `[h]` opens the History view for the focused entry, `[K]` re-enters API keys, `[q]` quits. An empty list shows only `[n] new` / `[K] keys` / `[q] quit`.
-3. **Editor** — form for one saved search. Fields in order: `query` (freeform), `days`, `city`, `limit`, `exclude (comma-sep)`, `filter & rank prefs` (natural language). Tab through with `enter`; `esc` cancels back to the saved-searches list at any point. After the last field you land on a menu — `[s]` save, `[r]` save and run, `[c]`/`b`/`backspace`/`esc` cancel.
+2. **Saved searches** — list of persisted searches with their last-run timestamp (relative). `↑/↓` move, `enter` runs the selected entry, `[e]` opens the editor, `[n]` creates a new one, `[d]` deletes (asks for `y/N`), `[a]` archives the focused entry (soft delete; archived rows are hidden from this listing), `[h]` opens the History view for the focused entry, `[K]` re-enters API keys, `[q]` quits. An empty list shows only `[n] new` / `[K] keys` / `[q] quit`.
+3. **Editor** — form for one saved search. Fields cover identity (`query`, `city`), search shape (`days`, `limit`), exclusions (`excludeKeywords`, `excludeVenues`, `freeOnly`, `price.min/max/currency`), and `guidance` (natural-language filter + rank prefs). Tab through with `enter`; `esc` cancels back to the saved-searches list at any point. After the last field you land on a menu — `[s]` save, `[r]` save and run, `[c]`/`b`/`backspace`/`esc` cancel.
 4. **Progress** — live stage list (build queries → search → extract → dedupe → rank → save) with a spinner on the active stage and counts (`extract 12/40 → 18`). Driven by `curator.curate()`'s `onProgress` callback (see [pipeline.md](pipeline.md)).
-5. **Results** — ranked list with each event's ~5-word LLM rationale on the focused row, paged 10 per screen. `↑/↓` to move (auto-flips pages), `PgUp`/`PgDn` (or `space`) to jump a page, `g`/`G` to jump to top/bottom, `→`/`[o]` to open the focused event's details, `[l]` toggle like, `[d]` toggle dislike, `enter` to save feedback, `esc`/`q`/`b`/`backspace` to skip back. Cursor and like/dislike marks survive a round-trip through the details screen. Header shows `page N/M · showing X-Y`. As the user pages, the events on each visible page are recorded as "shown" for the active saved query (`curator.markShown`); events that were never paged into stay eligible to resurface on the next run.
+5. **Results** — ranked list with each event's ~5-word LLM rationale on the focused row, paged 10 per screen. `↑/↓` to move (auto-flips pages), `PgUp`/`PgDn` (or `space`) to jump a page, `g`/`G` to jump to top/bottom, `→`/`[o]` to open the focused event's details, `[l]` toggle like, `[d]` toggle dislike, `enter` to save feedback, `esc`/`q`/`b`/`backspace` to skip back. Cursor and like/dislike marks survive a round-trip through the details screen. Header shows `page N/M · showing X-Y`. As the user pages, the events on each visible page are recorded as `Shown` for the active saved query via `curator.recordFeedback({ ids, state: SHOWN, ref })`; events that were never paged into stay eligible to resurface on the next run.
 6. **History** — the same Results list rendered in read-only mode against `curator.listShown({ city, queryText })`, opened from the saved-searches list with `[h]` on the focused row. No like/dislike, no feedback submit, no automatic mark-shown; just the events the user has already been shown for that saved query, most recent first. `enter`/`esc`/`q`/`b`/`backspace` returns to the saved-searches list; `→`/`[o]` opens the same details screen as Results.
 7. **Details** — full record for one event: title, when (start → end if multi-day), venue, price, source link, rationale, and description. `[l]`/`[d]` toggle like/dislike (synced with the results list, hidden in history mode); `enter`/`esc`/`←`/`q`/`b`/`backspace` returns to the originating list.
 
@@ -81,10 +81,10 @@ The TUI configures rank as `[rules, llmRank]` — `rules` cheaply drops events e
 What it exercises:
 
 - Full pipeline (`curate()`) with combined filter + rank LLM call
-- Saved-query CRUD (`listSavedQueries` / `upsertSavedQuery` / `deleteSavedQuery` / `touchSavedQuery`)
-- Page-rendered shown tracking (`markShown(ids, { city, queryText })` per visible page) and history browsing (`listShown(...)`)
-- Feedback capture (`recordFeedback()`)
-- Preference scoping (saved-query identity drives the `(city, queryText)` scope)
+- Saved-query CRUD (`listSavedQueries` / `upsertSavedQuery` / `deleteSavedQuery` / `touchSavedQuery`) and soft-delete via `archived`
+- Page-rendered shown tracking (`recordFeedback({ ids, state: SHOWN, ref })` per visible page) and history browsing (`listShown(...)`)
+- Feedback capture (`recordFeedback({ ids, state: LIKED | DISLIKED, reasons?, ref })`)
+- Per-saved-query taste profile (saved-query `(city, queryText)` keys both the junction and the trait derivation persisted to `SavedQuery.derivedTraits`)
 
 ## Tuning workflow
 

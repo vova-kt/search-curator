@@ -12,6 +12,11 @@ import { useKeymap } from '../useKeymap.js';
  * @property {string} city
  * @property {string} limit
  * @property {string} excludeKeywords    // comma-separated
+ * @property {string} excludeVenues      // comma-separated
+ * @property {string} priceMin           // numeric or empty
+ * @property {string} priceMax           // numeric or empty
+ * @property {string} priceCurrency      // ISO-ish, e.g. EUR
+ * @property {string} freeOnly           // 'y' | 'n'
  * @property {string} guidance           // free text — combined filter + rank
  */
 
@@ -20,7 +25,12 @@ const FIELDS = /** @type {const} */ ([
   { key: 'days',             label: 'days',  numeric: true },
   { key: 'city',             label: 'city' },
   { key: 'limit',            label: 'limit', numeric: true },
-  { key: 'excludeKeywords',  label: 'exclude (comma-sep)' },
+  { key: 'excludeKeywords',  label: 'exclude kw (comma-sep)' },
+  { key: 'excludeVenues',    label: 'exclude venues (comma-sep)' },
+  { key: 'priceMin',         label: 'price min', numeric: true },
+  { key: 'priceMax',         label: 'price max', numeric: true },
+  { key: 'priceCurrency',    label: 'price currency' },
+  { key: 'freeOnly',         label: 'free only (y/n)' },
   { key: 'guidance',         label: 'filter & rank prefs' },
 ]);
 
@@ -47,21 +57,39 @@ export default function QueryEditorScreen({ existing, onSave, onSaveAndRun, onCa
     city: existing?.city ?? '',
     limit: String(existing?.limit ?? 10),
     excludeKeywords: csv(existing?.excludeKeywords ?? []),
+    excludeVenues: csv(existing?.excludeVenues ?? []),
+    priceMin: existing?.price?.min !== undefined ? String(existing.price.min) : '',
+    priceMax: existing?.price?.max !== undefined ? String(existing.price.max) : '',
+    priceCurrency: existing?.price?.currency ?? '',
+    freeOnly: existing?.freeOnly ? 'y' : 'n',
     guidance: existing?.guidance ?? '',
   }));
   const [idx, setIdx] = useState(0);
   const [mode, setMode] = useState(/** @type {'form'|'menu'} */ ('form'));
 
-  const buildSavedQuery = () => ({
-    city: values.city.trim(),
-    queryText: values.queryText.trim(),
-    days: Number(values.days) || 14,
-    limit: Number(values.limit) || 10,
-    excludeKeywords: fromCsv(values.excludeKeywords),
-    guidance: values.guidance.trim() || undefined,
-    createdAt: existing?.createdAt ?? new Date().toISOString(),
-    lastSearchedAt: existing?.lastSearchedAt,
-  });
+  const buildSavedQuery = () => {
+    const min = values.priceMin === '' ? undefined : Number(values.priceMin);
+    const max = values.priceMax === '' ? undefined : Number(values.priceMax);
+    const currency = values.priceCurrency.trim() || undefined;
+    const price = (min !== undefined || max !== undefined || currency)
+      ? { ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}), ...(currency ? { currency } : {}) }
+      : undefined;
+    return {
+      city: values.city.trim(),
+      queryText: values.queryText.trim(),
+      days: Number(values.days) || 14,
+      limit: Number(values.limit) || 10,
+      excludeKeywords: fromCsv(values.excludeKeywords),
+      excludeVenues: fromCsv(values.excludeVenues),
+      price,
+      freeOnly: values.freeOnly.trim().toLowerCase().startsWith('y'),
+      guidance: values.guidance.trim() || undefined,
+      derivedTraits: existing?.derivedTraits,
+      archived: existing?.archived ?? false,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      lastSearchedAt: existing?.lastSearchedAt,
+    };
+  };
 
   const valid = values.city.trim().length > 0 && values.queryText.trim().length > 0;
   const inMenu = mode === 'menu';

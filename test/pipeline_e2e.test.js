@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createCurator } from '../src/index.js';
+import { createCurator, EventState } from '../src/index.js';
 import { memory } from '../src/adapters/storage/memory.js';
 import { templates } from '../src/strategies/queryExpansion/index.js';
 import { stubLLM, stubSearch } from './_helpers.js';
@@ -9,6 +9,8 @@ import { stubLLM, stubSearch } from './_helpers.js';
 // deterministic `templates` strategy so they don't depend on stubbed LLM calls
 // for query expansion.
 const deterministicExpansion = { queryExpansion: [templates()] };
+
+const REF = { city: 'Berlin', queryText: 'comedy' };
 
 test('createCurator: full pipeline returns events from stub adapters', async () => {
   const llm = stubLLM((req) => {
@@ -73,9 +75,9 @@ test('createCurator: cross-session dedupe only drops events the consumer marked 
   });
   assert.equal(first.events.length, 1);
 
-  // Without an explicit markShown, the same event resurfaces — events that
-  // landed in storage but were never actually shown to the user remain
-  // eligible for re-discovery.
+  // Without an explicit SHOWN feedback, the same event resurfaces — events
+  // that landed in storage but were never actually shown to the user remain
+  // eligible for re-discovery (they only have a FOUND state row).
   const secondNotShown = await curator.curate({
     city: 'Berlin',
     queryText: 'comedy',
@@ -83,8 +85,8 @@ test('createCurator: cross-session dedupe only drops events the consumer marked 
   });
   assert.equal(secondNotShown.events.length, 1);
 
-  // Once the consumer marks it shown, the cross-session dedupe drops it.
-  await curator.markShown([first.events[0].id], { city: 'Berlin', queryText: 'comedy' });
+  // Once the consumer records SHOWN, cross-session dedupe drops it.
+  await curator.recordFeedback({ ids: [first.events[0].id], state: EventState.SHOWN, ref: REF });
   const third = await curator.curate({
     city: 'Berlin',
     queryText: 'comedy',
@@ -114,9 +116,9 @@ test('createCurator: listShown returns previously shown events for a saved query
   const { events } = await curator.curate({
     city: 'Berlin', queryText: 'comedy', timeframe: { rolling: { days: 14 } },
   });
-  await curator.markShown(events.map((e) => e.id), { city: 'Berlin', queryText: 'comedy' });
+  await curator.recordFeedback({ ids: events.map((e) => e.id), state: EventState.SHOWN, ref: REF });
 
-  const history = await curator.listShown({ city: 'Berlin', queryText: 'comedy' });
+  const history = await curator.listShown(REF);
   assert.equal(history.length, 1);
   assert.equal(history[0].title, 'Listed');
 
@@ -127,21 +129,7 @@ test('createCurator: listShown returns previously shown events for a saved query
   await curator.close();
 });
 
-test('createCurator: clearPreferences wipes prefs', async () => {
-  const llm = stubLLM(() => ({}));
-  const search = stubSearch([]);
-  const storage = memory();
-  const curator = await createCurator({ llm, search: [search], storage, strategies: deterministicExpansion });
-
-  // Seed something via storage directly.
-  await storage.updatePreference((p) => ({ ...p, explicitFilters: { excludeKeywords: ['x'] } }));
-  await curator.clearPreferences();
-  const after = await storage.getPreference();
-  assert.deepEqual(after.explicitFilters, {});
-  await curator.close();
-});
-
-test('createCurator: recordFeedback persists likes scoped by query', async () => {
+test('createCurator: recordFeedback persists likes per saved query and refreshes traits', async () => {
   const llm = stubLLM((req) => {
     if (req.system.includes('extract structured upcoming events')) {
       return {
@@ -157,13 +145,26 @@ test('createCurator: recordFeedback persists likes scoped by query', async () =>
   });
   const search = stubSearch([{ url: 'https://x.example.com', title: 't', content: 'c', source: 'stub' }]);
   const storage = memory();
-  const curator = await createCurator({ llm, search: [search], storage, strategies: deterministicExpansion, config: { preferences: { traitsRefreshThreshold: 1, deriveTraits: true } } });
+  // Seed a saved query so trait derivation has somewhere to persist.
+  await storage.init();
+  await storage.upsertSavedQuery({
+    city: 'Berlin', queryText: 'comedy', days: 14, limit: 10,
+    excludeKeywords: [], createdAt: '2026-04-01T00:00:00Z',
+  });
+  const curator = await createCurator({
+    llm, search: [search], storage, strategies: deterministicExpansion,
+    config: { preferences: { traitsRefreshThreshold: 1, deriveTraits: true } },
+  });
 
   const { events } = await curator.curate({ city: 'Berlin', queryText: 'comedy', timeframe: { rolling: { days: 14 } } });
-  await curator.recordFeedback({ liked: [events[0].id], disliked: [] });
+  await curator.recordFeedback({ ids: [events[0].id], state: EventState.LIKED, ref: REF });
 
-  const pref = await storage.getPreference({ city: 'Berlin', queryText: 'comedy' });
-  assert.equal(pref.liked.length, 1);
-  assert.equal(pref.liked[0].id, events[0].id);
+  const states = await storage.getEventStates(REF);
+  const liked = states.filter((s) => s.state === EventState.LIKED);
+  assert.equal(liked.length, 1);
+  assert.equal(liked[0].event.id, events[0].id);
+
+  const sq = await storage.getSavedQuery(REF);
+  assert.equal(sq?.derivedTraits, 'alt-comedy');
   await curator.close();
 });

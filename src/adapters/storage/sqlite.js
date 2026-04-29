@@ -3,7 +3,10 @@
  */
 
 import Database from 'better-sqlite3';
-import { scopeKey, effectiveScopeKeys, emptyPreference, mergePreferences } from './scope.js';
+import { EventState } from '../../core/eventState.js';
+
+/** @type {import('../../core/types.js').EventStateValue[]} */
+const VISIBLE_STATES = [EventState.SHOWN, EventState.LIKED, EventState.DISLIKED];
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS events (
@@ -23,24 +26,17 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_events_city ON events(city);
   CREATE INDEX IF NOT EXISTS idx_events_starts_at ON events(starts_at);
 
-  CREATE TABLE IF NOT EXISTS event_views (
+  CREATE TABLE IF NOT EXISTS event_states (
     event_id TEXT NOT NULL,
     city TEXT NOT NULL,
     query_text TEXT NOT NULL,
-    shown_at TEXT NOT NULL,
+    state TEXT NOT NULL,
+    reason TEXT,
+    state_at TEXT NOT NULL,
     PRIMARY KEY (event_id, city, query_text)
   );
-  CREATE INDEX IF NOT EXISTS idx_event_views_query ON event_views(city, query_text, shown_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_event_views_event ON event_views(event_id);
-
-  CREATE TABLE IF NOT EXISTS preferences (
-    scope TEXT PRIMARY KEY,
-    liked_json TEXT NOT NULL,
-    disliked_json TEXT NOT NULL,
-    filters_json TEXT NOT NULL,
-    derived_traits TEXT,
-    updated_at TEXT NOT NULL
-  );
+  CREATE INDEX IF NOT EXISTS idx_event_states_query ON event_states(city, query_text, state_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_event_states_event ON event_states(event_id);
 
   CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
@@ -54,8 +50,14 @@ const SCHEMA = `
     days INTEGER NOT NULL,
     query_limit INTEGER NOT NULL,
     exclude_keywords_json TEXT NOT NULL,
+    exclude_venues_json TEXT NOT NULL DEFAULT '[]',
+    price_json TEXT,
+    free_only INTEGER NOT NULL DEFAULT 0,
+    archived INTEGER NOT NULL DEFAULT 0,
     guidance TEXT,
+    derived_traits TEXT,
     created_at TEXT NOT NULL,
+    updated_at TEXT,
     last_searched_at TEXT,
     PRIMARY KEY (city, query_text)
   );
@@ -116,31 +118,67 @@ export function sqlite({ path }) {
       tx(events);
     },
 
-    async markShown(ids, ref) {
+    async recordEventStates(items, ref) {
       const d = ensureOpen();
-      if (ids.length === 0) return;
+      if (items.length === 0) return;
       const now = new Date().toISOString();
-      const insertView = d.prepare(`
-        INSERT INTO event_views (event_id, city, query_text, shown_at)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(event_id, city, query_text) DO UPDATE SET shown_at = excluded.shown_at
+      // FOUND is a "first time we saw it" stamp — it never overwrites a later state.
+      // All other states overwrite (the user's latest signal wins).
+      const insertIfAbsent = d.prepare(`
+        INSERT INTO event_states (event_id, city, query_text, state, reason, state_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(event_id, city, query_text) DO NOTHING
+      `);
+      const upsert = d.prepare(`
+        INSERT INTO event_states (event_id, city, query_text, state, reason, state_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(event_id, city, query_text) DO UPDATE SET
+          state = excluded.state,
+          reason = excluded.reason,
+          state_at = excluded.state_at
       `);
       const bumpEvent = d.prepare(`UPDATE events SET last_shown_at = ? WHERE id = ?`);
       const tx = d.transaction(() => {
-        for (const id of ids) {
-          insertView.run(id, ref.city, ref.queryText, now);
-          bumpEvent.run(now, id);
+        for (const it of items) {
+          const stmt = it.state === EventState.FOUND ? insertIfAbsent : upsert;
+          stmt.run(it.eventId, ref.city, ref.queryText, it.state, it.reason ?? null, now);
+          if (VISIBLE_STATES.includes(it.state)) bumpEvent.run(now, it.eventId);
         }
       });
       tx();
     },
 
-    async getShownIds(ids) {
+    async getEventStates(ref) {
+      const d = ensureOpen();
+      const rows = /** @type {(EventRow & { state: string, reason: string|null, state_at: string })[]} */ (
+        d.prepare(`
+          SELECT e.*, s.state AS state, s.reason AS reason, s.state_at AS state_at
+          FROM event_states s
+          JOIN events e ON e.id = s.event_id
+          WHERE s.city = ? AND s.query_text = ?
+          ORDER BY s.state_at DESC
+        `).all(ref.city, ref.queryText)
+      );
+      return rows.map((r) => ({
+        event: rowToEvent(r),
+        state: /** @type {import('../../core/types.js').EventStateValue} */ (r.state),
+        reason: r.reason ?? undefined,
+        stateAt: r.state_at,
+      }));
+    },
+
+    async getShownIds(ids, ref) {
       const d = ensureOpen();
       if (ids.length === 0) return new Set();
       const placeholders = ids.map(() => '?').join(',');
+      const statePlaceholders = VISIBLE_STATES.map(() => '?').join(',');
       const rows = /** @type {{ event_id: string }[]} */ (
-        d.prepare(`SELECT DISTINCT event_id FROM event_views WHERE event_id IN (${placeholders})`).all(...ids)
+        d.prepare(`
+          SELECT DISTINCT event_id FROM event_states
+          WHERE event_id IN (${placeholders})
+            AND city = ? AND query_text = ?
+            AND state IN (${statePlaceholders})
+        `).all(...ids, ref.city, ref.queryText, ...VISIBLE_STATES)
       );
       return new Set(rows.map((r) => r.event_id));
     },
@@ -148,14 +186,18 @@ export function sqlite({ path }) {
     async listShown(ref, opts) {
       const d = ensureOpen();
       const limit = opts?.limit;
+      const statePlaceholders = VISIBLE_STATES.map(() => '?').join(',');
       const sql = `
         SELECT e.* FROM events e
-        JOIN event_views v ON v.event_id = e.id
-        WHERE v.city = ? AND v.query_text = ?
-        ORDER BY v.shown_at DESC
+        JOIN event_states s ON s.event_id = e.id
+        WHERE s.city = ? AND s.query_text = ?
+          AND s.state IN (${statePlaceholders})
+        ORDER BY s.state_at DESC
         ${limit ? 'LIMIT ?' : ''}
       `;
-      const params = limit ? [ref.city, ref.queryText, limit] : [ref.city, ref.queryText];
+      const params = limit
+        ? [ref.city, ref.queryText, ...VISIBLE_STATES, limit]
+        : [ref.city, ref.queryText, ...VISIBLE_STATES];
       const rows = /** @type {EventRow[]} */ (d.prepare(sql).all(...params));
       return rows.map(rowToEvent);
     },
@@ -170,64 +212,15 @@ export function sqlite({ path }) {
       return rows.map(rowToEvent);
     },
 
-    async getPreference(scope) {
+    async listSavedQueries(opts) {
       const d = ensureOpen();
-      const keys = effectiveScopeKeys(scope);
-      const placeholders = keys.map(() => '?').join(',');
-      const rows = /** @type {PreferenceRow[]} */ (
-        d.prepare(`SELECT * FROM preferences WHERE scope IN (${placeholders})`).all(...keys)
-      );
-      // Order rows to match keys order (so most-specific overrides global).
-      const ordered = keys
-        .map((k) => rows.find((r) => r.scope === k))
-        .filter(/** @returns {r is PreferenceRow} */ (r) => Boolean(r))
-        .map(rowToPreference);
-      return mergePreferences(ordered.length ? ordered : [emptyPreference()]);
-    },
-
-    async updatePreference(updater, scope) {
-      const d = ensureOpen();
-      const key = scopeKey(scope);
-      const tx = d.transaction(() => {
-        const row = /** @type {PreferenceRow | undefined} */ (
-          d.prepare('SELECT * FROM preferences WHERE scope = ?').get(key)
-        );
-        const current = row ? rowToPreference(row) : emptyPreference();
-        const next = updater(current);
-        next.updatedAt = new Date().toISOString();
-        d.prepare(`
-          INSERT INTO preferences (scope, liked_json, disliked_json, filters_json, derived_traits, updated_at)
-          VALUES (@scope, @liked_json, @disliked_json, @filters_json, @derived_traits, @updated_at)
-          ON CONFLICT(scope) DO UPDATE SET
-            liked_json = excluded.liked_json,
-            disliked_json = excluded.disliked_json,
-            filters_json = excluded.filters_json,
-            derived_traits = excluded.derived_traits,
-            updated_at = excluded.updated_at
-        `).run(preferenceToRow(key, next));
-        return next;
-      });
-      return tx();
-    },
-
-    async clearPreference(scope) {
-      const d = ensureOpen();
-      if (!scope || (!scope.city && !scope.queryText)) {
-        d.prepare('DELETE FROM preferences').run();
-        return;
-      }
-      const key = scopeKey(scope);
-      d.prepare('DELETE FROM preferences WHERE scope = ?').run(key);
-    },
-
-    async listSavedQueries() {
-      const d = ensureOpen();
-      const rows = /** @type {SavedQueryRow[]} */ (
-        d.prepare(`
-          SELECT * FROM saved_queries
-          ORDER BY (last_searched_at IS NULL), last_searched_at DESC, created_at DESC
-        `).all()
-      );
+      const includeArchived = opts?.includeArchived ?? false;
+      const sql = `
+        SELECT * FROM saved_queries
+        ${includeArchived ? '' : 'WHERE archived = 0'}
+        ORDER BY (last_searched_at IS NULL), last_searched_at DESC, created_at DESC
+      `;
+      const rows = /** @type {SavedQueryRow[]} */ (d.prepare(sql).all());
       return rows.map(rowToSavedQuery);
     },
 
@@ -244,23 +237,37 @@ export function sqlite({ path }) {
       const existing = /** @type {{ created_at: string } | undefined} */ (
         d.prepare('SELECT created_at FROM saved_queries WHERE city = ? AND query_text = ?').get(q.city, q.queryText)
       );
+      const now = new Date().toISOString();
       const next = {
         ...q,
-        createdAt: existing?.created_at ?? q.createdAt ?? new Date().toISOString(),
+        excludeKeywords: q.excludeKeywords ?? [],
+        archived: q.archived ?? false,
+        createdAt: existing?.created_at ?? q.createdAt ?? now,
+        updatedAt: now,
       };
       d.prepare(`
         INSERT INTO saved_queries (
-          city, query_text, days, query_limit, exclude_keywords_json, guidance,
-          created_at, last_searched_at
+          city, query_text, days, query_limit,
+          exclude_keywords_json, exclude_venues_json, price_json, free_only, archived,
+          guidance, derived_traits,
+          created_at, updated_at, last_searched_at
         ) VALUES (
-          @city, @query_text, @days, @query_limit, @exclude_keywords_json, @guidance,
-          @created_at, @last_searched_at
+          @city, @query_text, @days, @query_limit,
+          @exclude_keywords_json, @exclude_venues_json, @price_json, @free_only, @archived,
+          @guidance, @derived_traits,
+          @created_at, @updated_at, @last_searched_at
         )
         ON CONFLICT(city, query_text) DO UPDATE SET
           days = excluded.days,
           query_limit = excluded.query_limit,
           exclude_keywords_json = excluded.exclude_keywords_json,
+          exclude_venues_json = excluded.exclude_venues_json,
+          price_json = excluded.price_json,
+          free_only = excluded.free_only,
+          archived = excluded.archived,
           guidance = excluded.guidance,
+          derived_traits = excluded.derived_traits,
+          updated_at = excluded.updated_at,
           last_searched_at = excluded.last_searched_at
       `).run(savedQueryToRow(next));
       return next;
@@ -313,16 +320,6 @@ export function sqlite({ path }) {
  */
 
 /**
- * @typedef {Object} PreferenceRow
- * @property {string} scope
- * @property {string} liked_json
- * @property {string} disliked_json
- * @property {string} filters_json
- * @property {string|null} derived_traits
- * @property {string} updated_at
- */
-
-/**
  * @param {import('../../core/types.js').Event} e
  * @param {string} now
  */
@@ -364,29 +361,20 @@ function rowToEvent(row) {
 }
 
 /**
- * @param {string} key
- * @param {import('../../core/types.js').Preference} p
- */
-function preferenceToRow(key, p) {
-  return {
-    scope: key,
-    liked_json: JSON.stringify(p.liked),
-    disliked_json: JSON.stringify(p.disliked),
-    filters_json: JSON.stringify(p.explicitFilters),
-    derived_traits: p.derivedTraits ?? null,
-    updated_at: p.updatedAt ?? new Date().toISOString(),
-  };
-}
-
-/**
  * @typedef {Object} SavedQueryRow
  * @property {string} city
  * @property {string} query_text
  * @property {number} days
  * @property {number} query_limit
  * @property {string} exclude_keywords_json
+ * @property {string} exclude_venues_json
+ * @property {string|null} price_json
+ * @property {number} free_only
+ * @property {number} archived
  * @property {string|null} guidance
+ * @property {string|null} derived_traits
  * @property {string} created_at
+ * @property {string|null} updated_at
  * @property {string|null} last_searched_at
  */
 
@@ -400,8 +388,14 @@ function savedQueryToRow(q) {
     days: q.days,
     query_limit: q.limit,
     exclude_keywords_json: JSON.stringify(q.excludeKeywords ?? []),
+    exclude_venues_json: JSON.stringify(q.excludeVenues ?? []),
+    price_json: q.price ? JSON.stringify(q.price) : null,
+    free_only: q.freeOnly ? 1 : 0,
+    archived: q.archived ? 1 : 0,
     guidance: q.guidance ?? null,
+    derived_traits: q.derivedTraits ?? null,
     created_at: q.createdAt,
+    updated_at: q.updatedAt ?? null,
     last_searched_at: q.lastSearchedAt ?? null,
   };
 }
@@ -417,22 +411,14 @@ function rowToSavedQuery(row) {
     days: row.days,
     limit: row.query_limit,
     excludeKeywords: JSON.parse(row.exclude_keywords_json),
+    excludeVenues: JSON.parse(row.exclude_venues_json),
+    price: row.price_json ? JSON.parse(row.price_json) : undefined,
+    freeOnly: row.free_only === 1,
+    archived: row.archived === 1,
     guidance: row.guidance ?? undefined,
-    createdAt: row.created_at,
-    lastSearchedAt: row.last_searched_at ?? undefined,
-  };
-}
-
-/**
- * @param {PreferenceRow} row
- * @returns {import('../../core/types.js').Preference}
- */
-function rowToPreference(row) {
-  return {
-    liked: JSON.parse(row.liked_json),
-    disliked: JSON.parse(row.disliked_json),
-    explicitFilters: JSON.parse(row.filters_json),
     derivedTraits: row.derived_traits ?? undefined,
-    updatedAt: row.updated_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at ?? undefined,
+    lastSearchedAt: row.last_searched_at ?? undefined,
   };
 }

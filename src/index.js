@@ -12,6 +12,7 @@ import { llmExpand, templates } from './strategies/queryExpansion/index.js';
 
 export { DEFAULTS } from './core/config.js';
 export { llmRank, byDate, rules } from './strategies/rank/index.js';
+export { EventState, EVENT_STATE_VALUES } from './core/eventState.js';
 
 /**
  * @typedef {Object} CreateCuratorOptions
@@ -31,11 +32,9 @@ export { llmRank, byDate, rules } from './strategies/rank/index.js';
 /**
  * @typedef {Object} Curator
  * @property {(query: import('./core/types.js').Query, opts?: CurateOptions) => Promise<{ events: import('./core/types.js').Event[] }>} curate
- * @property {(ids: string[], ref: import('./core/types.js').ShownRef) => Promise<void>} markShown
- * @property {(ref: import('./core/types.js').ShownRef, opts?: import('./core/types.js').ListShownOptions) => Promise<import('./core/types.js').Event[]>} listShown
- * @property {(picks: { liked: string[], disliked: string[], reasons?: Record<string, string> }) => Promise<void>} recordFeedback
- * @property {(scope?: import('./core/types.js').PreferenceScope) => Promise<void>} clearPreferences
- * @property {() => Promise<import('./core/types.js').SavedQuery[]>} listSavedQueries
+ * @property {(ref: import('./core/types.js').SavedQueryRef, opts?: import('./core/types.js').ListShownOptions) => Promise<import('./core/types.js').Event[]>} listShown
+ * @property {(input: import('./core/types.js').FeedbackInput) => Promise<void>} recordFeedback
+ * @property {(opts?: import('./core/types.js').ListSavedQueriesOptions) => Promise<import('./core/types.js').SavedQuery[]>} listSavedQueries
  * @property {(ref: import('./core/types.js').SavedQueryRef) => Promise<import('./core/types.js').SavedQuery | undefined>} getSavedQuery
  * @property {(q: import('./core/types.js').SavedQuery) => Promise<import('./core/types.js').SavedQuery>} upsertSavedQuery
  * @property {(ref: import('./core/types.js').SavedQueryRef) => Promise<void>} deleteSavedQuery
@@ -60,14 +59,16 @@ export async function createCurator(opts) {
 
   await opts.storage.init();
 
-  /** @type {import('./core/types.js').Event[]} */
-  let lastResults = [];
   /** @type {import('./core/types.js').Query | null} */
   let lastQuery = null;
 
   return {
     async curate(query, curateOpts) {
-      const preference = await opts.storage.getPreference({ city: query.city, queryText: query.queryText });
+      // Auto-attach the matching saved query so strategies can read taste settings
+      // (excludeKeywords, derivedTraits, etc.) without a second round-trip.
+      const savedQuery = query.savedQuery
+        ?? (await opts.storage.getSavedQuery({ city: query.city, queryText: query.queryText }));
+      const enrichedQuery = savedQuery ? { ...query, savedQuery } : query;
       /** @type {import('./core/types.js').Ctx} */
       const ctx = {
         llm: opts.llm,
@@ -75,35 +76,31 @@ export async function createCurator(opts) {
         storage: opts.storage,
         strategies,
         config,
-        query,
-        preference,
+        query: enrichedQuery,
         onProgress: curateOpts?.onProgress,
         signal: curateOpts?.signal,
         logger,
       };
       const events = await runCuration(ctx);
-      lastResults = events;
-      lastQuery = query;
+      lastQuery = enrichedQuery;
       // Bump last-searched timestamp on a matching saved query, if any.
       // No-op when this query wasn't run from a saved entry.
       await opts.storage.touchSavedQuery({ city: query.city, queryText: query.queryText });
       return { events };
     },
 
-    async markShown(ids, ref) {
-      if (ids.length === 0) return;
-      await opts.storage.markShown(ids, ref);
-    },
-
     async listShown(ref, listOpts) {
       return opts.storage.listShown(ref, listOpts);
     },
 
-    async recordFeedback(picks) {
-      if (!lastQuery) {
-        throw new Error('recordFeedback called before any curate()');
+    async recordFeedback(input) {
+      const ref = input.ref ?? (lastQuery
+        ? { city: lastQuery.city, queryText: lastQuery.queryText }
+        : null);
+      if (!ref) {
+        throw new Error('recordFeedback called before any curate(); pass `ref` explicitly');
       }
-      const preference = await opts.storage.getPreference({ city: lastQuery.city, queryText: lastQuery.queryText });
+      const queryForCtx = lastQuery ?? { city: ref.city, queryText: ref.queryText, timeframe: { rolling: { days: 0 } } };
       /** @type {import('./core/types.js').Ctx} */
       const ctx = {
         llm: opts.llm,
@@ -111,19 +108,14 @@ export async function createCurator(opts) {
         storage: opts.storage,
         strategies,
         config,
-        query: lastQuery,
-        preference,
+        query: queryForCtx,
         logger,
       };
-      await recordFeedback(picks, lastResults, ctx);
+      await recordFeedback({ ...input, ref }, ctx);
     },
 
-    async clearPreferences(scope) {
-      await opts.storage.clearPreference(scope);
-    },
-
-    async listSavedQueries() {
-      return opts.storage.listSavedQueries();
+    async listSavedQueries(listOpts) {
+      return opts.storage.listSavedQueries(listOpts);
     },
 
     async getSavedQuery(ref) {

@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { memory } from '../src/adapters/storage/memory.js';
+import { EventState } from '../src/core/eventState.js';
 import { makeEvent } from './_helpers.js';
+
+const REF_A = { city: 'Berlin', queryText: 'comedy' };
+const REF_B = { city: 'Berlin', queryText: 'jazz' };
 
 test('memory storage: upsertEvents stores events but does not mark them shown', async () => {
   const s = memory();
@@ -9,80 +13,91 @@ test('memory storage: upsertEvents stores events but does not mark them shown', 
   const e1 = makeEvent({ title: 'A' });
   const e2 = makeEvent({ title: 'B' });
   await s.upsertEvents([e1, e2]);
-  // Both events round-trip from storage…
   const fetched = await s.getEvents([e1.id, e2.id]);
   assert.equal(fetched.length, 2);
-  // …but neither has been shown yet, so getShownIds returns empty.
-  const shown = await s.getShownIds([e1.id, e2.id, 'evt_does_not_exist']);
+  // No state rows yet — getShownIds returns empty under any ref.
+  const shown = await s.getShownIds([e1.id, e2.id, 'evt_does_not_exist'], REF_A);
   assert.equal(shown.size, 0);
 });
 
-test('memory storage: markShown + getShownIds + listShown per saved query', async () => {
+test('memory storage: recordEventStates Found→Shown→Liked transitions', async () => {
+  const s = memory();
+  await s.init();
+  const e = makeEvent({ title: 'A' });
+  await s.upsertEvents([e]);
+
+  await s.recordEventStates([{ eventId: e.id, state: EventState.FOUND }], REF_A);
+  let states = await s.getEventStates(REF_A);
+  assert.equal(states[0].state, EventState.FOUND);
+  // FOUND alone is not "shown" for cross-session dedupe.
+  assert.equal((await s.getShownIds([e.id], REF_A)).size, 0);
+
+  await s.recordEventStates([{ eventId: e.id, state: EventState.SHOWN }], REF_A);
+  states = await s.getEventStates(REF_A);
+  assert.equal(states[0].state, EventState.SHOWN);
+  assert.equal((await s.getShownIds([e.id], REF_A)).size, 1);
+
+  await s.recordEventStates([{ eventId: e.id, state: EventState.LIKED }], REF_A);
+  states = await s.getEventStates(REF_A);
+  assert.equal(states[0].state, EventState.LIKED);
+});
+
+test('memory storage: FOUND never overwrites a later state', async () => {
+  const s = memory();
+  await s.init();
+  const e = makeEvent({ title: 'A' });
+  await s.upsertEvents([e]);
+  await s.recordEventStates([{ eventId: e.id, state: EventState.LIKED }], REF_A);
+  // Re-curating later writes FOUND for the same id; LIKED must stick.
+  await s.recordEventStates([{ eventId: e.id, state: EventState.FOUND }], REF_A);
+  const [row] = await s.getEventStates(REF_A);
+  assert.equal(row.state, EventState.LIKED);
+});
+
+test('memory storage: dislike with reason is persisted; getShownIds includes it', async () => {
+  const s = memory();
+  await s.init();
+  const e = makeEvent({ title: 'A' });
+  await s.upsertEvents([e]);
+  await s.recordEventStates(
+    [{ eventId: e.id, state: EventState.DISLIKED, reason: 'too touristy' }],
+    REF_A,
+  );
+  const [row] = await s.getEventStates(REF_A);
+  assert.equal(row.state, EventState.DISLIKED);
+  assert.equal(row.reason, 'too touristy');
+  // Disliked counts as shown for cross-session dedupe.
+  assert.equal((await s.getShownIds([e.id], REF_A)).size, 1);
+});
+
+test('memory storage: junction is per-ref', async () => {
+  const s = memory();
+  await s.init();
+  const e = makeEvent({ title: 'A' });
+  await s.upsertEvents([e]);
+  await s.recordEventStates([{ eventId: e.id, state: EventState.SHOWN }], REF_A);
+  // Different ref: no shown rows.
+  assert.equal((await s.getShownIds([e.id], REF_B)).size, 0);
+  assert.equal((await s.listShown(REF_B)).length, 0);
+  assert.equal((await s.listShown(REF_A)).length, 1);
+});
+
+test('memory storage: listShown ordered by stateAt DESC, FOUND-only excluded', async () => {
   const s = memory();
   await s.init();
   const e1 = makeEvent({ title: 'A' });
   const e2 = makeEvent({ title: 'B' });
   const e3 = makeEvent({ title: 'C' });
   await s.upsertEvents([e1, e2, e3]);
-
-  await s.markShown([e1.id, e2.id], { city: 'Berlin', queryText: 'comedy' });
-  const shown = await s.getShownIds([e1.id, e2.id, e3.id]);
-  assert.deepEqual([...shown].sort(), [e1.id, e2.id].sort());
-
-  // listShown is per-(city, queryText), most-recent first.
-  const list = await s.listShown({ city: 'Berlin', queryText: 'comedy' });
-  assert.deepEqual(list.map((e) => e.id).sort(), [e1.id, e2.id].sort());
-
-  // A different saved query has no shown rows yet.
-  const empty = await s.listShown({ city: 'Berlin', queryText: 'jazz' });
-  assert.equal(empty.length, 0);
+  await s.recordEventStates([{ eventId: e1.id, state: EventState.FOUND }], REF_A);
+  await s.recordEventStates([{ eventId: e2.id, state: EventState.SHOWN }], REF_A);
+  await s.recordEventStates([{ eventId: e3.id, state: EventState.LIKED }], REF_A);
+  const list = await s.listShown(REF_A);
+  // FOUND-only is excluded; SHOWN + LIKED present.
+  assert.deepEqual(list.map((e) => e.id).sort(), [e2.id, e3.id].sort());
 });
 
-test('memory storage: preferences scope merge — scoped overrides global', async () => {
-  const s = memory();
-  await s.init();
-  await s.updatePreference((p) => ({ ...p, explicitFilters: { excludeKeywords: ['global-kw'] } }));
-  await s.updatePreference(
-    (p) => ({ ...p, explicitFilters: { excludeKeywords: ['city-kw'] } }),
-    { city: 'Berlin' },
-  );
-  const merged = await s.getPreference({ city: 'Berlin' });
-  assert.deepEqual(merged.explicitFilters.excludeKeywords, ['city-kw']);
-});
-
-test('memory storage: clearPreference scope', async () => {
-  const s = memory();
-  await s.init();
-  await s.updatePreference((p) => ({ ...p, explicitFilters: { excludeKeywords: ['x'] } }));
-  await s.updatePreference((p) => ({ ...p, explicitFilters: { excludeKeywords: ['y'] } }), { city: 'Berlin' });
-  await s.clearPreference({ city: 'Berlin' });
-  const after = await s.getPreference({ city: 'Berlin' });
-  // City-scoped row gone; global row remains.
-  assert.deepEqual(after.explicitFilters.excludeKeywords, ['x']);
-});
-
-test('memory storage: clearPreference() with no args wipes all', async () => {
-  const s = memory();
-  await s.init();
-  await s.updatePreference((p) => ({ ...p, explicitFilters: { excludeKeywords: ['x'] } }));
-  await s.updatePreference((p) => ({ ...p, explicitFilters: { excludeKeywords: ['y'] } }), { city: 'Berlin' });
-  await s.clearPreference();
-  const after = await s.getPreference({ city: 'Berlin' });
-  assert.deepEqual(after.liked, []);
-  assert.deepEqual(after.explicitFilters, {});
-});
-
-test('memory storage: liked/disliked deduped on merge', async () => {
-  const s = memory();
-  await s.init();
-  const ref = { id: 'evt_x', title: 'X', venue: { name: 'V', city: 'Berlin' }, startsAt: '2026-05-02' };
-  await s.updatePreference((p) => ({ ...p, liked: [ref] }));
-  await s.updatePreference((p) => ({ ...p, liked: [ref] }));
-  const got = await s.getPreference();
-  assert.equal(got.liked.length, 1);
-});
-
-test('memory storage: saved queries CRUD + ordering by lastSearchedAt', async () => {
+test('memory storage: saved queries CRUD + archived hidden by default', async () => {
   const s = memory();
   await s.init();
   await s.upsertSavedQuery({
@@ -108,12 +123,20 @@ test('memory storage: saved queries CRUD + ordering by lastSearchedAt', async ()
   assert.deepEqual(got.excludeKeywords, ['open mic']);
   assert.equal(got.guidance, 'small venues');
 
-  await s.deleteSavedQuery({ city: 'Berlin', queryText: 'live concerts' });
+  // Archive one — listSavedQueries hides it by default, surfaces it with includeArchived.
+  await s.upsertSavedQuery({ ...got, archived: true });
   list = await s.listSavedQueries();
+  assert.equal(list.length, 1);
+  assert.equal(list[0].queryText, 'live concerts');
+  list = await s.listSavedQueries({ includeArchived: true });
+  assert.equal(list.length, 2);
+
+  await s.deleteSavedQuery({ city: 'Berlin', queryText: 'live concerts' });
+  list = await s.listSavedQueries({ includeArchived: true });
   assert.equal(list.length, 1);
 });
 
-test('memory storage: upsertSavedQuery preserves createdAt on update', async () => {
+test('memory storage: upsertSavedQuery preserves createdAt on update; carries new fields', async () => {
   const s = memory();
   await s.init();
   const initial = await s.upsertSavedQuery({
@@ -121,12 +144,18 @@ test('memory storage: upsertSavedQuery preserves createdAt on update', async () 
     createdAt: '2026-04-01T00:00:00Z',
   });
   const updated = await s.upsertSavedQuery({
-    city: 'Berlin', queryText: 'stand-up comedy', days: 30, limit: 5, excludeKeywords: ['x'],
-    createdAt: '2099-01-01T00:00:00Z', // ignored
+    city: 'Berlin', queryText: 'stand-up comedy', days: 30, limit: 5,
+    excludeKeywords: ['x'], excludeVenues: ['Big Hall'],
+    price: { min: 5, max: 30, currency: 'EUR' }, freeOnly: false,
+    derivedTraits: 'small venues, weeknights',
+    createdAt: '2099-01-01T00:00:00Z',
   });
   assert.equal(updated.createdAt, initial.createdAt);
   assert.equal(updated.days, 30);
   assert.deepEqual(updated.excludeKeywords, ['x']);
+  assert.deepEqual(updated.excludeVenues, ['Big Hall']);
+  assert.deepEqual(updated.price, { min: 5, max: 30, currency: 'EUR' });
+  assert.equal(updated.derivedTraits, 'small venues, weeknights');
 });
 
 test('memory storage: touchSavedQuery on missing row is a no-op', async () => {

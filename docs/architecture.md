@@ -38,7 +38,7 @@ Higher layers depend on lower ones, never the other way around. Stages depend on
 - **`strategies/`** — pure functions over events. May call the LLM adapter through `ctx.llm` if they're LLM-backed.
 - **`stages/`** — orchestrate adapters + strategies. Receive `(events, ctx)`, return events.
 - **`core/pipeline.js`** — wires stages in order. The only place that knows the full sequence.
-- **`index.js`** — assembles `ctx`, exposes `curate()` / `recordFeedback()` / `clearPreferences()` / `close()`.
+- **`index.js`** — assembles `ctx`, exposes `curate()` / `recordFeedback()` / `listShown()` / saved-query CRUD / `close()`.
 
 ## Why this shape
 
@@ -54,10 +54,10 @@ Query  ─▶  discover  ─▶  extract  ─▶  dedupe  ─▶  rank  ─▶  
             │              │            │          │
             ▼              ▼            ▼          ▼
          search         LLM +        strategies  strategies (rules + byDate/llmRank)
-         adapter        browser                  + prefs (drops + reorders)
+         adapter        browser                  + savedQuery + state (drops + reorders)
                                           │
                                           ▼
-                                       storage  ◀── feedback (likes/dislikes)
+                                       storage  ◀── feedback (state transitions: shown/liked/disliked)
 ```
 
 See [pipeline.md](pipeline.md) for the per-stage contract.

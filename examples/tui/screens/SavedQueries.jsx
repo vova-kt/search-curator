@@ -29,7 +29,7 @@ function relativeTime(iso) {
  *
  * Bindings live in the keymap below; the help footer mirrors them.
  */
-export default function SavedQueriesScreen({ queries, onRun, onEdit, onNew, onDelete, onHistory, onEditKeys, onQuit }) {
+export default function SavedQueriesScreen({ queries, onRun, onEdit, onNew, onDelete, onArchive, onHistory, onEditKeys, onQuit }) {
   const [cursor, setCursor] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(/** @type {null | { city: string, queryText: string }} */ (null));
 
@@ -56,6 +56,7 @@ export default function SavedQueriesScreen({ queries, onRun, onEdit, onNew, onDe
       { keys: [Key.RETURN],   action: Action.RUN_SELECTED,    when: !inConfirm && hasQueries },
       { keys: [char('e')],    action: Action.EDIT_SELECTED,   when: !inConfirm && hasQueries },
       { keys: [char('d')],    action: Action.DELETE_SELECTED, when: !inConfirm && hasQueries },
+      { keys: [char('a')],    action: Action.ARCHIVE_SELECTED, when: !inConfirm && hasQueries && Boolean(onArchive) },
       { keys: [char('h')],    action: Action.OPEN_HISTORY,    when: !inConfirm && hasQueries },
       { keys: [char('K')],    action: Action.OPEN_KEYS,       when: !inConfirm && Boolean(onEditKeys) },
       { keys: [char('q')],    action: Action.QUIT,            when: !inConfirm },
@@ -69,6 +70,7 @@ export default function SavedQueriesScreen({ queries, onRun, onEdit, onNew, onDe
       [Action.RUN_SELECTED]:   () => { if (selected) onRun(selected); },
       [Action.EDIT_SELECTED]:  () => { if (selected) onEdit(selected); },
       [Action.DELETE_SELECTED]:() => { if (selected) setConfirmDelete({ city: selected.city, queryText: selected.queryText }); },
+      [Action.ARCHIVE_SELECTED]:() => { if (selected && onArchive) onArchive(selected); },
       [Action.OPEN_HISTORY]:   () => { if (selected && onHistory) onHistory(selected); },
       [Action.OPEN_KEYS]:      () => onEditKeys?.(),
       [Action.QUIT]:           onQuit,
@@ -112,7 +114,7 @@ export default function SavedQueriesScreen({ queries, onRun, onEdit, onNew, onDe
           </Text>
         ) : (
           <Text dimColor>
-            ↑/↓ move · enter run · [e] edit · [n] new · [d] delete · [h] history{onEditKeys ? ' · [K] keys' : ''} · [q] quit
+            ↑/↓ move · enter run · [e] edit · [n] new · [d] delete{onArchive ? ' · [a] archive' : ''} · [h] history{onEditKeys ? ' · [K] keys' : ''} · [q] quit
           </Text>
         )}
       </Box>

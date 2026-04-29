@@ -1,5 +1,6 @@
 /**
- * Rule-based filter using `Preference.explicitFilters`. Pure, no LLM.
+ * Rule-based filter using the `SavedQuery` taste settings attached to `ctx.query.savedQuery`.
+ * Pure, no LLM.
  *
  * Keyword matching is morphology-aware via Snowball stemming so that
  * `excludeKeywords: ['концерт']` matches `'концерта'`, `'концертов'`, etc.,
@@ -39,11 +40,13 @@ function stemPhrase(text) {
 
 /** @type {import('../../core/types.js').Strategy} */
 export const rules = (events, ctx) => {
-  const f = { ...(ctx.preference.explicitFilters ?? {}), ...(ctx.query.filters ?? {}) };
-  const excludeKeywordStems = (f.excludeKeywords ?? [])
+  const sq = ctx.query.savedQuery;
+  if (!sq) return events;
+
+  const excludeKeywordStems = (sq.excludeKeywords ?? [])
     .map((k) => stemPhrase(k))
     .filter((k) => k.length > 0);
-  const excludeVenues = new Set((f.excludeVenues ?? []).map((v) => normalize(v)));
+  const excludeVenues = new Set((sq.excludeVenues ?? []).map((v) => normalize(v)));
 
   return events.filter((e) => {
     if (excludeVenues.has(normalize(e.venue.name))) return false;
@@ -51,9 +54,9 @@ export const rules = (events, ctx) => {
       const haystack = ` ${stemPhrase(`${e.title} ${e.description ?? ''}`)} `;
       if (excludeKeywordStems.some((k) => haystack.includes(` ${k} `))) return false;
     }
-    if (f.freeOnly && !e.price?.free) return false;
-    if (f.price) {
-      const { min, max } = f.price;
+    if (sq.freeOnly && !e.price?.free) return false;
+    if (sq.price) {
+      const { min, max } = sq.price;
       const eMin = e.price?.min ?? e.price?.max;
       if (min !== undefined && eMin !== undefined && eMin < min) return false;
       if (max !== undefined && e.price?.min !== undefined && e.price.min > max) return false;

@@ -78,14 +78,17 @@ Stages call `ctx.llm.chat({ system, messages, json: true })` with prompts loaded
  * @property {() => Promise<void>} close
  *
  * @property {(events: Event[]) => Promise<void>} upsertEvents
- * @property {(ids: string[], ref: { city: string, queryText: string }) => Promise<void>} markShown
- * @property {(ids: string[]) => Promise<Set<string>>} getShownIds
- * @property {(ref: { city: string, queryText: string }, opts?: { limit?: number }) => Promise<Event[]>} listShown
+ * @property {(items: Array<{eventId: string, state: EventStateValue, reason?: string}>, ref: SavedQueryRef) => Promise<void>} recordEventStates
+ * @property {(ref: SavedQueryRef) => Promise<EventStateRecord[]>} getEventStates
+ * @property {(ids: string[], ref: SavedQueryRef) => Promise<Set<string>>} getShownIds  // state ∈ {Shown, Liked, Disliked}
+ * @property {(ref: SavedQueryRef, opts?: { limit?: number }) => Promise<Event[]>} listShown
  * @property {(ids: string[]) => Promise<Event[]>} getEvents
  *
- * @property {(scope?: { city?: string, queryText?: string }) => Promise<Preference>} getPreference
- * @property {(updater: (current: Preference) => Preference, scope?: { city?: string, queryText?: string }) => Promise<Preference>} updatePreference
- * @property {(scope?: { city?: string, queryText?: string }) => Promise<void>} clearPreference
+ * @property {(opts?: { includeArchived?: boolean }) => Promise<SavedQuery[]>} listSavedQueries
+ * @property {(ref: SavedQueryRef) => Promise<SavedQuery | undefined>} getSavedQuery
+ * @property {(q: SavedQuery) => Promise<SavedQuery>} upsertSavedQuery
+ * @property {(ref: SavedQueryRef) => Promise<void>} deleteSavedQuery
+ * @property {(ref: SavedQueryRef) => Promise<void>} touchSavedQuery
  *
  * @property {(key: string) => Promise<string | undefined>} getKV         // generic cache; callers namespace their own keys
  * @property {(key: string, value: string) => Promise<void>} setKV

@@ -47,7 +47,7 @@
  * @property {string} [rationale]        // LLM's "why this matches" line
  * @property {string} [firstSeenAt]
  * @property {string} [lastSeenAt]
- * @property {string} [lastShownAt]      // most recent time any consumer marked this event as actually shown to the user
+ * @property {string} [lastShownAt]      // most recent time any consumer transitioned this event to a user-visible state
  */
 
 /**
@@ -76,16 +76,16 @@
  * @property {string} city
  * @property {string} queryText        // user's freeform initial query (e.g., "indie live music")
  * @property {Timeframe | { rolling: RollingTimeframe }} timeframe
- * @property {Partial<ExplicitFilters>} [filters]
  * @property {number} [limit]
  * @property {string} [guidance]       // free-text filter & ranking preferences for the LLM
+ * @property {SavedQuery} [savedQuery] // when running from a saved entry, attached so strategies can read taste settings
  */
 
 /**
  * Persisted user-defined search. Identity is `(city, queryText)`.
  *
- * `excludeKeywords` and `guidance` are merged into the runtime `Query`
- * by the TUI when the user runs a saved query.
+ * Carries taste settings and explicit filters used to refine the corresponding
+ * `Query`. Soft-deleted via `archived` (junction rows persist).
  *
  * @typedef {Object} SavedQuery
  * @property {string} city
@@ -93,8 +93,14 @@
  * @property {number} days
  * @property {number} limit
  * @property {string[]} excludeKeywords
+ * @property {string[]} [excludeVenues]
+ * @property {{ min?: number, max?: number, currency?: string }} [price]
+ * @property {boolean} [freeOnly]
  * @property {string} [guidance]
+ * @property {string} [derivedTraits]
+ * @property {boolean} [archived]
  * @property {string} createdAt
+ * @property {string} [updatedAt]
  * @property {string} [lastSearchedAt]
  */
 
@@ -105,35 +111,26 @@
  */
 
 /**
- * @typedef {Object} ExplicitFilters
- * @property {string[]} [excludeKeywords]
- * @property {string[]} [excludeVenues]
- * @property {{ min?: number, max?: number, currency?: string }} [price]
- * @property {boolean} [freeOnly]
+ * @typedef {'found'|'shown'|'liked'|'disliked'} EventStateValue
+ *   Runtime values exported as the `EventState` enum from core/eventState.js.
  */
 
 /**
- * @typedef {Object} EventRef
- * @property {string} id
- * @property {string} title
- * @property {{ name: string, city: string }} venue
- * @property {string} startsAt
- * @property {string} [reason]   // user-supplied note explaining the signal; only carried on disliked entries today
+ * @typedef {Object} EventStateRecord
+ * @property {Event} event
+ * @property {EventStateValue} state
+ * @property {string} [reason]   // user-supplied note; only meaningful for `disliked`
+ * @property {string} stateAt
  */
 
 /**
- * @typedef {Object} Preference
- * @property {EventRef[]} liked
- * @property {EventRef[]} disliked
- * @property {ExplicitFilters} explicitFilters
- * @property {string} [derivedTraits]
- * @property {string} [updatedAt]
- */
-
-/**
- * @typedef {Object} PreferenceScope
- * @property {string} [city]
- * @property {string} [queryText]
+ * One state transition per call. `reasons` is only consulted when `state === 'disliked'`.
+ *
+ * @typedef {Object} FeedbackInput
+ * @property {string[]} ids
+ * @property {EventStateValue} state
+ * @property {Record<string, string>} [reasons]
+ * @property {SavedQueryRef} [ref]   // defaults to the last curated query's ref
  */
 
 /**
@@ -173,14 +170,20 @@
  */
 
 /**
- * @typedef {Object} ShownRef
- * @property {string} city
- * @property {string} queryText
+ * @typedef {Object} ListShownOptions
+ * @property {number} [limit]    // cap rows returned; defaults to no cap
  */
 
 /**
- * @typedef {Object} ListShownOptions
- * @property {number} [limit]    // cap rows returned; defaults to no cap
+ * @typedef {Object} ListSavedQueriesOptions
+ * @property {boolean} [includeArchived]   // default false
+ */
+
+/**
+ * @typedef {Object} EventStateItem
+ * @property {string} eventId
+ * @property {EventStateValue} state
+ * @property {string} [reason]
  */
 
 /**
@@ -188,14 +191,12 @@
  * @property {() => Promise<void>} init
  * @property {() => Promise<void>} close
  * @property {(events: Event[]) => Promise<void>} upsertEvents
- * @property {(ids: string[], ref: ShownRef) => Promise<void>} markShown
- * @property {(ids: string[]) => Promise<Set<string>>} getShownIds
- * @property {(ref: ShownRef, opts?: ListShownOptions) => Promise<Event[]>} listShown
+ * @property {(items: EventStateItem[], ref: SavedQueryRef) => Promise<void>} recordEventStates
+ * @property {(ref: SavedQueryRef) => Promise<EventStateRecord[]>} getEventStates
+ * @property {(ids: string[], ref: SavedQueryRef) => Promise<Set<string>>} getShownIds
+ * @property {(ref: SavedQueryRef, opts?: ListShownOptions) => Promise<Event[]>} listShown
  * @property {(ids: string[]) => Promise<Event[]>} getEvents
- * @property {(scope?: PreferenceScope) => Promise<Preference>} getPreference
- * @property {(updater: (current: Preference) => Preference, scope?: PreferenceScope) => Promise<Preference>} updatePreference
- * @property {(scope?: PreferenceScope) => Promise<void>} clearPreference
- * @property {() => Promise<SavedQuery[]>} listSavedQueries
+ * @property {(opts?: ListSavedQueriesOptions) => Promise<SavedQuery[]>} listSavedQueries
  * @property {(ref: SavedQueryRef) => Promise<SavedQuery | undefined>} getSavedQuery
  * @property {(q: SavedQuery) => Promise<SavedQuery>} upsertSavedQuery
  * @property {(ref: SavedQueryRef) => Promise<void>} deleteSavedQuery
@@ -263,7 +264,6 @@
  * @property {Strategies} strategies
  * @property {Config} config
  * @property {Query} query
- * @property {Preference} preference
  * @property {AbortSignal} [signal]
  * @property {ProgressListener} [onProgress]
  * @property {import('./logger.js').Logger} logger

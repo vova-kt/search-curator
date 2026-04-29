@@ -3,7 +3,7 @@
  * One-shot example. See docs/examples.md.
  */
 
-import { createCurator } from '../src/index.js';
+import { createCurator, EventState } from '../src/index.js';
 import { sqlite } from '../src/adapters/storage/sqlite.js';
 import { memory } from '../src/adapters/storage/memory.js';
 import { openai } from '../src/adapters/llm/openai.js';
@@ -55,7 +55,11 @@ if (events.length === 0) {
   // The script prints every returned event in one shot, so all of them count
   // as "shown" — record that so cross-session dedupe (storage.getShownIds)
   // suppresses them on the next run.
-  await curator.markShown(events.map((e) => e.id), { city: args.city, queryText: args.query });
+  await curator.recordFeedback({
+    ids: events.map((e) => e.id),
+    state: EventState.SHOWN,
+    ref: { city: args.city, queryText: args.query },
+  });
 }
 
 await curator.close();

@@ -4,24 +4,39 @@ import { rules } from '../src/strategies/rank/rules.js';
 import { makeEvent } from './_helpers.js';
 
 /**
- * @param {Partial<import('../src/core/types.js').Ctx>} extra
+ * @param {Partial<import('../src/core/types.js').SavedQuery>} sq
  * @returns {import('../src/core/types.js').Ctx}
  */
-function ctx(extra = {}) {
+function ctx(sq) {
   return /** @type {any} */ ({
-    preference: { liked: [], disliked: [], explicitFilters: {} },
-    query: { city: 'Berlin', queryText: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' } },
+    query: {
+      city: 'Berlin',
+      queryText: 'comedy',
+      timeframe: { from: '2026-05-01', to: '2026-05-31' },
+      savedQuery: sq
+        ? {
+            city: 'Berlin', queryText: 'comedy', days: 14, limit: 10,
+            excludeKeywords: [], createdAt: '2026-04-01T00:00:00Z',
+            ...sq,
+          }
+        : undefined,
+    },
     config: { dedupe: { fuzzyTitleThreshold: 0.85 } },
-    ...extra,
   });
 }
+
+test('rules: no savedQuery means no filtering', async () => {
+  const events = [makeEvent({ title: 'Anything' })];
+  const out = await rules(events, ctx());
+  assert.equal(out.length, 1);
+});
 
 test('rules: excludeKeywords drops matching events', async () => {
   const events = [
     makeEvent({ title: 'Open Mic at Pub' }),
     makeEvent({ title: 'Pro Comedy Show', source: { name: 's', url: 'https://b.example.com' } }),
   ];
-  const out = await rules(events, ctx({ preference: { liked: [], disliked: [], explicitFilters: { excludeKeywords: ['open mic'] } } }));
+  const out = await rules(events, ctx({ excludeKeywords: ['open mic'] }));
   assert.equal(out.length, 1);
   assert.equal(out[0].title, 'Pro Comedy Show');
 });
@@ -33,7 +48,7 @@ test('rules: excludeKeywords matches Russian morphological variants', async () =
     makeEvent({ title: 'На концерте было шумно', source: { name: 's', url: 'https://c.example.com' } }),
     makeEvent({ title: 'Театральная постановка', source: { name: 's', url: 'https://d.example.com' } }),
   ];
-  const out = await rules(events, ctx({ preference: { liked: [], disliked: [], explicitFilters: { excludeKeywords: ['концерт'] } } }));
+  const out = await rules(events, ctx({ excludeKeywords: ['концерт'] }));
   assert.deepEqual(out.map((e) => e.title), ['Театральная постановка']);
 });
 
@@ -43,20 +58,34 @@ test('rules: excludeKeywords matches English plural via stemming', async () => {
     makeEvent({ title: 'Stand-up Shows tonight', source: { name: 's', url: 'https://b.example.com' } }),
     makeEvent({ title: 'Quiet reading', source: { name: 's', url: 'https://c.example.com' } }),
   ];
-  const out = await rules(events, ctx({ preference: { liked: [], disliked: [], explicitFilters: { excludeKeywords: ['show'] } } }));
+  const out = await rules(events, ctx({ excludeKeywords: ['show'] }));
   assert.deepEqual(out.map((e) => e.title), ['Quiet reading']);
 });
 
-test('rules: query filters override preference filters', async () => {
+test('rules: price max from savedQuery filters out pricey events', async () => {
   const events = [
     makeEvent({ title: 'Cheap show', price: { currency: 'EUR', min: 5 }, source: { name: 's', url: 'https://a.example.com' } }),
     makeEvent({ title: 'Pricey show', price: { currency: 'EUR', min: 50 }, source: { name: 's', url: 'https://b.example.com' } }),
   ];
-  const out = await rules(events, ctx({
-    preference: { liked: [], disliked: [], explicitFilters: { price: { max: 100 } } },
-    query: { city: 'Berlin', queryText: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' }, filters: { price: { max: 10 } } },
-  }));
+  const out = await rules(events, ctx({ price: { max: 10 } }));
   assert.equal(out.length, 1);
   assert.equal(out[0].title, 'Cheap show');
 });
 
+test('rules: excludeVenues from savedQuery drops matching venues', async () => {
+  const events = [
+    makeEvent({ title: 'A', venue: { name: 'Big Hall', city: 'Berlin' } }),
+    makeEvent({ title: 'B', venue: { name: 'Tiny Bar', city: 'Berlin' }, source: { name: 's', url: 'https://b.example.com' } }),
+  ];
+  const out = await rules(events, ctx({ excludeVenues: ['Big Hall'] }));
+  assert.deepEqual(out.map((e) => e.title), ['B']);
+});
+
+test('rules: freeOnly drops paid events', async () => {
+  const events = [
+    makeEvent({ title: 'Free', price: { free: true } }),
+    makeEvent({ title: 'Paid', price: { currency: 'EUR', min: 10 }, source: { name: 's', url: 'https://b.example.com' } }),
+  ];
+  const out = await rules(events, ctx({ freeOnly: true }));
+  assert.deepEqual(out.map((e) => e.title), ['Free']);
+});

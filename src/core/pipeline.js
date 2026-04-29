@@ -7,6 +7,7 @@ import { extract } from '../stages/extract.js';
 import { dedupe } from '../stages/dedupe.js';
 import { rank } from '../stages/rank.js';
 import { ProgressStage, ProgressPhase } from './progress.js';
+import { EventState } from './eventState.js';
 
 /**
  * @param {import('./types.js').Ctx} ctx
@@ -43,7 +44,14 @@ export async function runCuration(ctx) {
   events = events.slice(0, limit);
 
   emit({ stage: ProgressStage.PERSIST, phase: ProgressPhase.START });
-  if (events.length > 0) await ctx.storage.upsertEvents(events);
+  if (events.length > 0) {
+    await ctx.storage.upsertEvents(events);
+    const ref = { city: ctx.query.city, queryText: ctx.query.queryText };
+    await ctx.storage.recordEventStates(
+      events.map((e) => ({ eventId: e.id, state: EventState.FOUND })),
+      ref,
+    );
+  }
   emit({ stage: ProgressStage.PERSIST, phase: ProgressPhase.DONE, count: events.length });
   log.info(`[pipeline] persist → ${events.length} events (limit=${limit})`);
   log.debug('[pipeline] result', events.map((e) => ({ id: e.id, title: e.title, startsAt: e.startsAt })));

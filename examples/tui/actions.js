@@ -34,6 +34,7 @@ export const Action = Object.freeze({
   EDIT_SELECTED:   'editSelected',
   NEW_QUERY:       'newQuery',
   DELETE_SELECTED: 'deleteSelected',
+  ARCHIVE_SELECTED:'archiveSelected',
   OPEN_HISTORY:    'openHistory',
   OPEN_KEYS:       'openKeys',
 

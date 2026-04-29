@@ -9,13 +9,19 @@
  * results to nothing on a bad response.
  */
 
+import { EventState } from '../../core/eventState.js';
 import { rankByPreferencePrompt } from '../../prompts/rankByPreference.js';
 
 /** @type {import('../../core/types.js').Strategy} */
 export const llmRank = async (events, ctx) => {
   if (events.length <= 1) return events;
-  const { liked, disliked, derivedTraits } = ctx.preference;
   const { city, queryText, guidance } = ctx.query;
+  const sq = ctx.query.savedQuery;
+  const derivedTraits = sq?.derivedTraits;
+
+  const states = await ctx.storage.getEventStates({ city, queryText });
+  const liked = states.filter((s) => s.state === EventState.LIKED);
+  const disliked = states.filter((s) => s.state === EventState.DISLIKED);
 
   // Skip the call when there's nothing for the LLM to act on.
   if (liked.length === 0 && disliked.length === 0 && !derivedTraits && !guidance) {
@@ -33,8 +39,15 @@ export const llmRank = async (events, ctx) => {
     city,
     queryText,
     candidates,
-    liked: liked.map((l) => ({ title: l.title, venue: l.venue })),
-    disliked: disliked.map((d) => ({ title: d.title, venue: d.venue, ...(d.reason ? { reason: d.reason } : {}) })),
+    liked: liked.map((l) => ({
+      title: l.event.title,
+      venue: { name: l.event.venue.name, city: l.event.venue.city },
+    })),
+    disliked: disliked.map((d) => ({
+      title: d.event.title,
+      venue: { name: d.event.venue.name, city: d.event.venue.city },
+      ...(d.reason ? { reason: d.reason } : {}),
+    })),
     derivedTraits,
     guidance,
   });
