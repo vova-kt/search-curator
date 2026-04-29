@@ -197,6 +197,30 @@
  */
 
 /**
+ * @typedef {'queries'|'search'|'extract'|'dedupe'|'filter'|'rank'|'persist'} ProgressStage
+ *   Runtime values exported as the `ProgressStage` enum from core/progress.js.
+ */
+
+/**
+ * @typedef {'start'|'tick'|'done'} ProgressPhase
+ *   Runtime values exported as the `ProgressPhase` enum from core/progress.js.
+ */
+
+/**
+ * @typedef {Object} ProgressEvent
+ * @property {ProgressStage} stage
+ * @property {ProgressPhase} phase
+ * @property {number} [count]    // items produced (on 'done') or built (on 'queries done')
+ * @property {number} [current]  // 'tick' only — items processed so far
+ * @property {number} [total]    // 'start'/'tick' — items expected
+ * @property {string} [note]     // optional human-readable detail (e.g., "tavily")
+ */
+
+/**
+ * @typedef {(event: ProgressEvent) => void} ProgressListener
+ */
+
+/**
  * @typedef {Object} Ctx
  * @property {LLMAdapter} llm
  * @property {SearchAdapter[]} search
@@ -206,6 +230,7 @@
  * @property {Query} query
  * @property {Preference} preference
  * @property {AbortSignal} [signal]
+ * @property {ProgressListener} [onProgress]
  */
 
 export {};

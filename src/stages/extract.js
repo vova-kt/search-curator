@@ -7,6 +7,7 @@
 import { extractEventsPrompt } from '../prompts/extractEvents.js';
 import { eventId } from '../core/identity.js';
 import { resolveTimeframe } from '../core/timeframe.js';
+import { ProgressStage, ProgressPhase } from '../core/progress.js';
 
 /**
  * @param {import('../core/types.js').SearchHit[]} hits
@@ -16,10 +17,12 @@ import { resolveTimeframe } from '../core/timeframe.js';
 export async function extract(hits, ctx) {
   const timeframe = resolveTimeframe(ctx.query.timeframe, ctx.config.pipeline.defaultRollingDays);
   const concurrency = ctx.config.pipeline.extractConcurrency;
+  const emit = ctx.onProgress ?? (() => {});
 
   /** @type {import('../core/types.js').Event[]} */
   const out = [];
   let cursor = 0;
+  let processed = 0;
 
   /** @returns {Promise<void>} */
   async function worker() {
@@ -33,6 +36,8 @@ export async function extract(hits, ctx) {
         // eslint-disable-next-line no-console
         console.warn(`[extract] failed for ${hit.url}:`, err instanceof Error ? err.message : err);
       }
+      processed++;
+      emit({ stage: ProgressStage.EXTRACT, phase: ProgressPhase.TICK, current: processed, total: hits.length });
     }
   }
 

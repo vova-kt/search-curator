@@ -71,18 +71,43 @@ Not part of `curate()` — invoked via `curator.recordFeedback()`. Pulls liked/d
 
 ```js
 async function runCuration(ctx) {
-  let events = await discover(ctx);
-  events = await extract(events, ctx);
-  events = await dedupe(events, ctx);
-  events = await filter(events, ctx);
-  events = await rank(events, ctx);
+  let events = await discover(ctx);            // emits 'queries' + 'search' progress
+  events = await extract(events, ctx);         // emits 'extract' progress (with ticks)
+  events = await dedupe(events, ctx);          // emits 'dedupe' progress
+  events = await filter(events, ctx);          // emits 'filter' progress
+  events = await rank(events, ctx);            // emits 'rank' progress
   events = events.slice(0, ctx.query.limit ?? ctx.config.pipeline.defaultLimit);
-  await ctx.storage.upsertEvents(events);
+  await ctx.storage.upsertEvents(events);      // emits 'persist' progress
   return events;
 }
 ```
 
-The orchestrator also marks events as seen in storage (so future runs can skip them).
+The orchestrator also marks events as seen in storage (so future runs can skip them). Progress events are emitted via `ctx.onProgress` if set — see "Progress events" below.
+
+## Progress events
+
+`curate()` accepts a second arg with an optional `onProgress(event)` listener:
+
+```js
+curator.curate(query, {
+  onProgress: (e) => console.log(e.stage, e.phase, e.current, e.total),
+});
+```
+
+`event` shape (see `ProgressEvent` in [src/core/types.js](../src/core/types.js)):
+
+| Field    | Notes                                                                           |
+| -------- | ------------------------------------------------------------------------------- |
+| `stage`  | `ProgressStage` enum value (`queries`, `search`, `extract`, `dedupe`, `filter`, `rank`, `persist`) |
+| `phase`  | `ProgressPhase` enum value (`start`, `tick`, `done`)                             |
+| `total`  | items expected (on `start` and `tick`)                                           |
+| `current`| items processed so far (on `tick`)                                               |
+| `count`  | items produced (on `done`)                                                       |
+| `note`   | optional human-readable detail (e.g., adapter name during `search`)              |
+
+The runtime enum values live in [src/core/progress.js](../src/core/progress.js) — import `ProgressStage` and `ProgressPhase` from there rather than hard-coding the strings. `PROGRESS_STAGE_ORDER` is also exported for UIs that render stages in pipeline order.
+
+Emission contract per stage: exactly one `start`, zero or more `tick`s, exactly one `done`. `extract` and `search` emit `tick`s; the rest only emit `start`/`done`. The listener is plumbed through `ctx.onProgress`; stages call it directly.
 
 ## Adding a stage
 

@@ -11,6 +11,7 @@ These are project rules. Follow them on every change.
 1. **Update docs and `CLAUDE.md` after each change.** Whenever behavior, architecture, public API, config, prompts, or strategies change, update the relevant `docs/*.md` page and this file. Docs are the source of truth, not commit messages. If you're not updating docs, you're not done.
 2. **Bug fixes target the root cause.** Do not patch symptoms, swallow errors, or special-case the failing input. Trace the failure to the underlying cause and fix it there. If the root cause is out of scope, say so explicitly and stop — don't ship a workaround silently.
 3. **No backward compatibility while in development.** The lib is pre-`1.0`. Rename, restructure, drop fields, change return shapes whenever it makes the design better. Don't add deprecation shims, "legacy" branches, aliases, or migrations. Just change it and update the docs.
+4. **Use enums, not raw string/number constants, for closed sets of values.** Any value drawn from a fixed set that's used in more than one place — stage names, phase names, categories, status codes, kinds, modes — must be defined as a frozen enum object (e.g. `Object.freeze({ FOO: 'foo' })`) in a dedicated module and imported. Do not hard-code the underlying literals at call sites. JSDoc string-literal unions stay as the type contract; the enum is the single source of truth for the runtime values. Existing example: [src/core/progress.js](src/core/progress.js).
 
 ## Where things live
 

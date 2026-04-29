@@ -4,14 +4,25 @@
  * See docs/pipeline.md.
  */
 
+import { ProgressStage, ProgressPhase } from '../core/progress.js';
+
 /**
  * @param {import('../core/types.js').Ctx} ctx
  * @returns {Promise<import('../core/types.js').SearchHit[]>}
  */
 export async function discover(ctx) {
+  const emit = ctx.onProgress ?? (() => {});
+
+  emit({ stage: ProgressStage.QUERIES, phase: ProgressPhase.START });
   const queries = await buildQueries(ctx);
+  emit({ stage: ProgressStage.QUERIES, phase: ProgressPhase.DONE, count: queries.length });
+
+  const total = ctx.search.length * queries.length;
+  emit({ stage: ProgressStage.SEARCH, phase: ProgressPhase.START, total });
+
   /** @type {import('../core/types.js').SearchHit[]} */
   const all = [];
+  let current = 0;
   for (const adapter of ctx.search) {
     for (const q of queries) {
       try {
@@ -26,9 +37,13 @@ export async function discover(ctx) {
         // eslint-disable-next-line no-console
         console.warn(`[discover] ${adapter.name} failed for "${q}":`, err instanceof Error ? err.message : err);
       }
+      current++;
+      emit({ stage: ProgressStage.SEARCH, phase: ProgressPhase.TICK, current, total, note: adapter.name });
     }
   }
-  return dedupeByUrl(all);
+  const deduped = dedupeByUrl(all);
+  emit({ stage: ProgressStage.SEARCH, phase: ProgressPhase.DONE, count: deduped.length });
+  return deduped;
 }
 
 /**
