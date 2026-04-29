@@ -1,5 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { Key, char } from '../keys.js';
+import { Action } from '../actions.js';
+import { useKeymap } from '../useKeymap.js';
+import { BACK_KEYS, LIST_UP_KEYS, LIST_DOWN_KEYS, LIKE_KEYS, DISLIKE_KEYS } from '../bindings.js';
 
 const PAGE_SIZE = 10;
 
@@ -40,43 +44,57 @@ export default function ResultsScreen({
     if (ids.length > 0) onPageVisibleRef.current(ids);
   }, [pageStart, events, isHistory]);
 
-  useInput((input, key) => {
-    if (events.length === 0) {
-      if (key.return || input === 'q' || key.escape) onBack();
-      return;
-    }
-    if (key.upArrow || input === 'k') {
-      setCursor(Math.max(0, cursor - 1));
-    } else if (key.downArrow || input === 'j') {
-      setCursor(Math.min(events.length - 1, cursor + 1));
-    } else if (key.pageUp || input === 'b') {
-      setCursor(Math.max(0, cursor - PAGE_SIZE));
-    } else if (key.pageDown || input === 'f' || input === ' ') {
-      setCursor(Math.min(events.length - 1, cursor + PAGE_SIZE));
-    } else if (input === 'g') {
-      setCursor(0);
-    } else if (input === 'G') {
-      setCursor(events.length - 1);
-    } else if (!isHistory && input === 'l') {
-      const id = events[cursor].id;
-      setMarks({ ...marks, [id]: marks[id] === 'like' ? undefined : 'like' });
-    } else if (!isHistory && input === 'd') {
-      const id = events[cursor].id;
-      setMarks({ ...marks, [id]: marks[id] === 'dislike' ? undefined : 'dislike' });
-    } else if (key.rightArrow || input === 'o') {
-      onOpenDetails(cursor);
-    } else if (key.return) {
-      if (isHistory) { onBack(); return; }
-      const liked = Object.entries(marks).filter(([, v]) => v === 'like').map(([id]) => id);
-      const disliked = Object.entries(marks).filter(([, v]) => v === 'dislike').map(([id]) => id);
-      onSubmit({ liked, disliked });
-    } else if (key.escape || input === 'q') {
-      if (isHistory) { onBack(); return; }
-      onSubmit({ liked: [], disliked: [] });
-    }
-  });
+  const hasEvents = events.length > 0;
 
-  if (events.length === 0) {
+  useKeymap(
+    hasEvents
+      ? [
+          { keys: LIST_UP_KEYS,                           action: Action.MOVE_UP },
+          { keys: LIST_DOWN_KEYS,                         action: Action.MOVE_DOWN },
+          { keys: [Key.PAGE_UP],                          action: Action.PAGE_UP },
+          { keys: [Key.PAGE_DOWN, char('f'), Key.SPACE],  action: Action.PAGE_DOWN },
+          { keys: [char('g')],                            action: Action.JUMP_TOP },
+          { keys: [char('G')],                            action: Action.JUMP_BOTTOM },
+          { keys: LIKE_KEYS,                              action: Action.TOGGLE_LIKE,    when: !isHistory },
+          { keys: DISLIKE_KEYS,                           action: Action.TOGGLE_DISLIKE, when: !isHistory },
+          { keys: [Key.RIGHT, char('o')],                 action: Action.OPEN_DETAILS },
+          // Enter: in curated mode commits feedback; in history it's just back.
+          { keys: [Key.RETURN], action: isHistory ? Action.BACK : Action.SUBMIT_FEEDBACK },
+          // Back row: in history mode pops the screen; in curated mode the
+          // visible effect is the same (pop to saved-list) but it's recorded
+          // as an empty-feedback skip rather than ignoring the marks silently.
+          { keys: BACK_KEYS, action: isHistory ? Action.BACK : Action.SKIP_FEEDBACK },
+        ]
+      : [
+          { keys: [Key.RETURN, ...BACK_KEYS], action: Action.BACK },
+        ],
+    {
+      [Action.MOVE_UP]:        () => setCursor(Math.max(0, cursor - 1)),
+      [Action.MOVE_DOWN]:      () => setCursor(Math.min(events.length - 1, cursor + 1)),
+      [Action.PAGE_UP]:        () => setCursor(Math.max(0, cursor - PAGE_SIZE)),
+      [Action.PAGE_DOWN]:      () => setCursor(Math.min(events.length - 1, cursor + PAGE_SIZE)),
+      [Action.JUMP_TOP]:       () => setCursor(0),
+      [Action.JUMP_BOTTOM]:    () => setCursor(events.length - 1),
+      [Action.TOGGLE_LIKE]:    () => {
+        const id = events[cursor].id;
+        setMarks({ ...marks, [id]: marks[id] === 'like' ? undefined : 'like' });
+      },
+      [Action.TOGGLE_DISLIKE]: () => {
+        const id = events[cursor].id;
+        setMarks({ ...marks, [id]: marks[id] === 'dislike' ? undefined : 'dislike' });
+      },
+      [Action.OPEN_DETAILS]:   () => onOpenDetails(cursor),
+      [Action.SUBMIT_FEEDBACK]: () => {
+        const liked = Object.entries(marks).filter(([, v]) => v === 'like').map(([id]) => id);
+        const disliked = Object.entries(marks).filter(([, v]) => v === 'dislike').map(([id]) => id);
+        onSubmit({ liked, disliked });
+      },
+      [Action.SKIP_FEEDBACK]:  () => onSubmit({ liked: [], disliked: [] }),
+      [Action.BACK]:           onBack,
+    },
+  );
+
+  if (!hasEvents) {
     return (
       <Box flexDirection="column">
         <Text>{isHistory ? '(no history yet for this saved search)' : '(no events found)'}</Text>
@@ -124,8 +142,8 @@ export default function ResultsScreen({
       <Box marginTop={1}>
         <Text dimColor>
           {isHistory
-            ? '↑/↓ move · pgup/pgdn page · g/G top/bot · →/o details · enter/esc/q back'
-            : '↑/↓ move · pgup/pgdn page · g/G top/bot · →/o details · [l] like · [d] dislike · enter save · q/esc skip'}
+            ? '↑/↓ move · pgup/pgdn page · g/G top/bot · →/o details · enter/esc/q/b/⌫ back'
+            : '↑/↓ move · pgup/pgdn page · g/G top/bot · →/o details · [l] like · [d] dislike · enter save · esc/q/b/⌫ skip'}
         </Text>
       </Box>
     </Box>

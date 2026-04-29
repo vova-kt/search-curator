@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
+import { Key, char } from '../keys.js';
+import { Action } from '../actions.js';
+import { useKeymap } from '../useKeymap.js';
 
 /**
  * @typedef {Object} EditorValues
@@ -35,7 +38,7 @@ const fromCsv = (s) => s.split(',').map((x) => x.trim()).filter((x) => x.length 
  * Editor for a single SavedQuery.
  *
  * `existing` is the SavedQuery being edited (or null for a new one). `s` saves;
- * `r` saves and runs. `c` cancels back to the list.
+ * `r` saves and runs. `c`/`b`/`backspace` cancels back to the list.
  */
 export default function QueryEditorScreen({ existing, onSave, onSaveAndRun, onCancel }) {
   const [values, setValues] = useState(/** @type {EditorValues} */ ({
@@ -61,24 +64,25 @@ export default function QueryEditorScreen({ existing, onSave, onSaveAndRun, onCa
   });
 
   const valid = values.city.trim().length > 0 && values.queryText.trim().length > 0;
+  const inMenu = mode === 'menu';
 
-  useInput((input, key) => {
-    if (key.escape) {
-      onCancel();
-      return;
-    }
-    if (mode !== 'menu') return;
-    if (input === 's' && valid) {
-      onSave(buildSavedQuery());
-    } else if (input === 'r' && valid) {
-      onSaveAndRun(buildSavedQuery());
-    } else if (input === 'c') {
-      onCancel();
-    } else if (input === 'e') {
-      setMode('form');
-      setIdx(0);
-    }
-  });
+  // Esc cancels in any mode. The other cancel keys (b/⌫/c) and the menu
+  // verbs are gated to menu mode so they don't fight TextInput while typing.
+  useKeymap(
+    [
+      { keys: [Key.ESC],                                  action: Action.CANCEL },
+      { keys: [Key.BACKSPACE, char('b'), char('c')],      action: Action.CANCEL,       when: inMenu },
+      { keys: [char('s')],                                action: Action.SAVE,         when: inMenu && valid },
+      { keys: [char('r')],                                action: Action.SAVE_AND_RUN, when: inMenu && valid },
+      { keys: [char('e')],                                action: Action.ENTER_FORM,   when: inMenu },
+    ],
+    {
+      [Action.CANCEL]:       onCancel,
+      [Action.SAVE]:         () => onSave(buildSavedQuery()),
+      [Action.SAVE_AND_RUN]: () => onSaveAndRun(buildSavedQuery()),
+      [Action.ENTER_FORM]:   () => { setMode('form'); setIdx(0); },
+    },
+  );
 
   const next = () => {
     if (idx < FIELDS.length - 1) {
@@ -124,8 +128,8 @@ export default function QueryEditorScreen({ existing, onSave, onSaveAndRun, onCa
         ) : (
           <Text dimColor>
             {valid
-              ? '[s] save · [r] save+run · [e] edit · [c] cancel'
-              : '[e] edit (city + query required) · [c] cancel'}
+              ? '[s] save · [r] save+run · [e] edit · [c]/b/⌫/esc cancel'
+              : '[e] edit (city + query required) · [c]/b/⌫/esc cancel'}
           </Text>
         )}
       </Box>

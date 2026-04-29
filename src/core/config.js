@@ -85,7 +85,7 @@ export const DEFAULTS = Object.freeze({
   /** Core logger configuration. */
   logging: {
     /** Log level: 'silent' | 'error' | 'warn' | 'info' | 'debug'. */
-    level: /** @type {'warn'} */ ('warn'),
+    level: /** @type {'warn'} */ ('debug'),
   },
 });
 

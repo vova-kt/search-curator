@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { Key, char } from '../keys.js';
+import { Action } from '../actions.js';
+import { useKeymap } from '../useKeymap.js';
+import { BACK_KEYS, LIST_UP_KEYS, LIST_DOWN_KEYS } from '../bindings.js';
 
 /**
  * @param {string | undefined} iso
@@ -23,15 +27,7 @@ function relativeTime(iso) {
 /**
  * List of saved searches with last-search relative time.
  *
- * Keys:
- *   ↑/↓ or j/k — move
- *   enter      — run selected
- *   e          — edit selected
- *   n          — create new
- *   d          — delete (asks for confirm)
- *   h          — open history view (events already shown to the user)
- *   k          — keys screen (if available)
- *   q          — quit
+ * Bindings live in the keymap below; the help footer mirrors them.
  */
 export default function SavedQueriesScreen({ queries, onRun, onEdit, onNew, onDelete, onHistory, onEditKeys, onQuit }) {
   const [cursor, setCursor] = useState(0);
@@ -39,38 +35,45 @@ export default function SavedQueriesScreen({ queries, onRun, onEdit, onNew, onDe
 
   const safeCursor = Math.min(cursor, Math.max(0, queries.length - 1));
   const selected = queries[safeCursor];
+  const hasQueries = queries.length > 0;
+  const inConfirm = confirmDelete !== null;
 
-  useInput((input, key) => {
-    if (confirmDelete) {
-      if (input === 'y' || input === 'Y') {
-        const target = confirmDelete;
-        setConfirmDelete(null);
-        onDelete(target);
-      } else if (input === 'n' || input === 'N' || key.escape) {
-        setConfirmDelete(null);
-      }
-      return;
-    }
-    if (key.upArrow || input === 'k') {
-      setCursor((c) => Math.max(0, c - 1));
-    } else if (key.downArrow || input === 'j') {
-      setCursor((c) => Math.min(queries.length - 1, c + 1));
-    } else if (input === 'n') {
-      onNew();
-    } else if (queries.length > 0 && key.return) {
-      if (selected) onRun(selected);
-    } else if (queries.length > 0 && input === 'e') {
-      if (selected) onEdit(selected);
-    } else if (queries.length > 0 && input === 'd') {
-      if (selected) setConfirmDelete({ city: selected.city, queryText: selected.queryText });
-    } else if (queries.length > 0 && input === 'h') {
-      if (selected && onHistory) onHistory(selected);
-    } else if (input === 'K' && onEditKeys) {
-      onEditKeys();
-    } else if (input === 'q') {
-      onQuit();
-    }
-  });
+  useKeymap(
+    [
+      // Confirm-delete prompt — gated by `inConfirm` so confirm answers
+      // don't bleed into normal navigation when the prompt isn't open.
+      // 'q' is omitted from the cancel set here because the screen owns 'q'
+      // as QUIT in normal mode; under the prompt, BACK_KEYS' esc/⌫/b cover
+      // the dismiss case.
+      { keys: [char('y'), char('Y')],                            action: Action.CONFIRM_YES, when: inConfirm },
+      { keys: [char('n'), char('N'), Key.ESC, Key.BACKSPACE, char('b')], action: Action.CONFIRM_NO, when: inConfirm },
+
+      // Normal mode. `when: !inConfirm` everywhere keeps verbs from firing
+      // under the prompt.
+      { keys: LIST_UP_KEYS,   action: Action.MOVE_UP,         when: !inConfirm },
+      { keys: LIST_DOWN_KEYS, action: Action.MOVE_DOWN,       when: !inConfirm },
+      { keys: [char('n')],    action: Action.NEW_QUERY,       when: !inConfirm },
+      { keys: [Key.RETURN],   action: Action.RUN_SELECTED,    when: !inConfirm && hasQueries },
+      { keys: [char('e')],    action: Action.EDIT_SELECTED,   when: !inConfirm && hasQueries },
+      { keys: [char('d')],    action: Action.DELETE_SELECTED, when: !inConfirm && hasQueries },
+      { keys: [char('h')],    action: Action.OPEN_HISTORY,    when: !inConfirm && hasQueries },
+      { keys: [char('K')],    action: Action.OPEN_KEYS,       when: !inConfirm && Boolean(onEditKeys) },
+      { keys: [char('q')],    action: Action.QUIT,            when: !inConfirm },
+    ],
+    {
+      [Action.CONFIRM_YES]:    () => { const t = confirmDelete; setConfirmDelete(null); onDelete(t); },
+      [Action.CONFIRM_NO]:     () => setConfirmDelete(null),
+      [Action.MOVE_UP]:        () => setCursor((c) => Math.max(0, c - 1)),
+      [Action.MOVE_DOWN]:      () => setCursor((c) => Math.min(queries.length - 1, c + 1)),
+      [Action.NEW_QUERY]:      onNew,
+      [Action.RUN_SELECTED]:   () => { if (selected) onRun(selected); },
+      [Action.EDIT_SELECTED]:  () => { if (selected) onEdit(selected); },
+      [Action.DELETE_SELECTED]:() => { if (selected) setConfirmDelete({ city: selected.city, queryText: selected.queryText }); },
+      [Action.OPEN_HISTORY]:   () => { if (selected && onHistory) onHistory(selected); },
+      [Action.OPEN_KEYS]:      () => onEditKeys?.(),
+      [Action.QUIT]:           onQuit,
+    },
+  );
 
   if (queries.length === 0) {
     return (

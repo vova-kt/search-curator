@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
 import TextInput from 'ink-text-input';
+import { Key } from '../keys.js';
+import { Action } from '../actions.js';
+import { useKeymap } from '../useKeymap.js';
 
 const FIELDS = [
   { key: 'openaiApiKey', label: 'OpenAI API key', mask: true },
@@ -14,9 +17,12 @@ export default function KeysScreen({ initial, source, onSubmit, onCancel }) {
   });
   const [idx, setIdx] = useState(0);
 
-  useInput((input, key) => {
-    if (key.escape && onCancel) onCancel();
-  });
+  // The fields are TextInput-driven; only Esc is reserved as a global verb
+  // (back/⌫/b would clobber typed-in API key characters).
+  useKeymap(
+    [{ keys: [Key.ESC], action: Action.CANCEL, when: Boolean(onCancel) }],
+    { [Action.CANCEL]: () => onCancel?.() },
+  );
 
   const next = () => {
     if (idx < FIELDS.length - 1) {
@@ -28,7 +34,6 @@ export default function KeysScreen({ initial, source, onSubmit, onCancel }) {
     }
   };
 
-  const field = FIELDS[idx];
   const display = (v, mask) => (mask && v ? `${'•'.repeat(Math.min(v.length, 16))}${v.length > 16 ? '…' : ''}` : v || '(empty)');
 
   return (

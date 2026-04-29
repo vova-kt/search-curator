@@ -1,5 +1,9 @@
 import React from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { Key } from '../keys.js';
+import { Action } from '../actions.js';
+import { useKeymap } from '../useKeymap.js';
+import { BACK_KEYS, LIKE_KEYS, DISLIKE_KEYS } from '../bindings.js';
 
 const formatDate = (iso) => {
   if (!iso) return '';
@@ -24,15 +28,19 @@ const Field = ({ label, children }) => (
 );
 
 export default function DetailsScreen({ event, mark, onToggleLike, onToggleDislike, onBack }) {
-  useInput((input, key) => {
-    if (key.escape || key.leftArrow || input === 'q' || key.return) {
-      onBack();
-    } else if (input === 'l' && onToggleLike) {
-      onToggleLike();
-    } else if (input === 'd' && onToggleDislike) {
-      onToggleDislike();
-    }
-  });
+  const canToggle = Boolean(onToggleLike);
+  useKeymap(
+    [
+      { keys: [...BACK_KEYS, Key.LEFT, Key.RETURN], action: Action.BACK },
+      { keys: LIKE_KEYS,    action: Action.TOGGLE_LIKE,    when: canToggle },
+      { keys: DISLIKE_KEYS, action: Action.TOGGLE_DISLIKE, when: canToggle },
+    ],
+    {
+      [Action.BACK]: onBack,
+      [Action.TOGGLE_LIKE]: () => onToggleLike?.(),
+      [Action.TOGGLE_DISLIKE]: () => onToggleDislike?.(),
+    },
+  );
 
   if (!event) {
     return (
@@ -72,7 +80,7 @@ export default function DetailsScreen({ event, mark, onToggleLike, onToggleDisli
         </Box>
       )}
       <Box marginTop={1}>
-        <Text dimColor>{onToggleLike ? '[l] like · [d] dislike · ' : ''}enter/esc/← back</Text>
+        <Text dimColor>{canToggle ? '[l] like · [d] dislike · ' : ''}enter/esc/←/b/⌫ back</Text>
       </Box>
     </Box>
   );
