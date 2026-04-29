@@ -33,7 +33,7 @@ export { llmRank, byDate, rules } from './strategies/rank/index.js';
  * @property {(query: import('./core/types.js').Query, opts?: CurateOptions) => Promise<{ events: import('./core/types.js').Event[] }>} curate
  * @property {(ids: string[], ref: import('./core/types.js').ShownRef) => Promise<void>} markShown
  * @property {(ref: import('./core/types.js').ShownRef, opts?: import('./core/types.js').ListShownOptions) => Promise<import('./core/types.js').Event[]>} listShown
- * @property {(picks: { liked: string[], disliked: string[] }) => Promise<void>} recordFeedback
+ * @property {(picks: { liked: string[], disliked: string[], reasons?: Record<string, string> }) => Promise<void>} recordFeedback
  * @property {(scope?: import('./core/types.js').PreferenceScope) => Promise<void>} clearPreferences
  * @property {() => Promise<import('./core/types.js').SavedQuery[]>} listSavedQueries
  * @property {(ref: import('./core/types.js').SavedQueryRef) => Promise<import('./core/types.js').SavedQuery | undefined>} getSavedQuery

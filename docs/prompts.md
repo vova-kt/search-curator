@@ -30,8 +30,8 @@ The full structure (XML-tagged sections, ordering, the long-input exception, mod
 | ------------------------------------- | ----------------------------------------------------------- |
 | `src/prompts/extractEvents.js`        | Convert web content into structured `Event` objects         |
 | `src/prompts/dedupeJudge.js`          | Decide whether two near-duplicate events are the same       |
-| `src/prompts/rankByPreference.js`     | Combined filter + rank: drop poor matches, order kept events by likely interest, attach a ~5-word rationale. Receives the user's original `(city, queryText)` as the on-topic filter, plus optional `guidance` for further filter+rank refinement. |
-| `src/prompts/derivePreferenceTraits.js` | Summarize liked/disliked events into a short trait string |
+| `src/prompts/rankByPreference.js`     | Combined filter + rank: drop poor matches, order kept events by likely interest, attach a ~5-word rationale. Receives the user's original `(city, queryText)` as the on-topic filter, plus optional `guidance` for further filter+rank refinement. Disliked examples may carry an optional `reason` (user's free-text note); the prompt instructs the model to apply that principle generally rather than only to literal lookalikes. |
+| `src/prompts/derivePreferenceTraits.js` | Summarize liked/disliked events into a short trait string. Disliked examples may include a `reason`; when present it is weighted heavily as user-supplied principle. |
 | `src/prompts/expandQueries.js`        | Produce diverse web-search queries for the discover stage   |
 
 ## Adding a prompt

@@ -3,7 +3,8 @@ import { buildSystem } from './_system.js';
 /**
  * @typedef {Object} DerivePreferenceTraitsArgs
  * @property {Array<{ title: string, venue: { name: string, city: string }, startsAt: string }>} liked
- * @property {Array<{ title: string, venue: { name: string, city: string }, startsAt: string }>} disliked
+ * @property {Array<{ title: string, venue: { name: string, city: string }, startsAt: string, reason?: string }>} disliked
+ *   `reason` is the user's optional free-text note explaining the dislike.
  */
 
 /**
@@ -21,6 +22,7 @@ export function derivePreferenceTraitsPrompt({ liked, disliked }) {
     task: 'Read the liked and disliked example events and produce one short, dense line that captures the user\'s taste. The line will be reused as cheap context in downstream filter/rank prompts.',
     rules: [
       '- Mention venue style, sub-genres, time-of-day, price band, and any clear avoidances when the examples support them.',
+      '- When a disliked example carries a `reason`, weight that user-supplied principle — it is more reliable than inference from the example alone.',
       '- Skip dimensions the examples do not justify rather than guessing.',
       '- One line, comma-separated phrases, no leading article ("Prefers...", "User likes..."). Just the traits.',
       '- Stay under 200 characters.',

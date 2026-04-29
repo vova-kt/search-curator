@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Box, Text } from 'ink';
 import { Key } from '../keys.js';
 import { Action } from '../actions.js';
 import { useKeymap } from '../useKeymap.js';
 import { BACK_KEYS, LIKE_KEYS, DISLIKE_KEYS } from '../bindings.js';
+import DislikeReasonInput from '../DislikeReasonInput.jsx';
 
 const formatDate = (iso) => {
   if (!iso) return '';
@@ -27,20 +28,36 @@ const Field = ({ label, children }) => (
   </Box>
 );
 
-export default function DetailsScreen({ event, mark, onToggleLike, onToggleDislike, onBack }) {
-  const canToggle = Boolean(onToggleLike);
+export default function DetailsScreen({ event, mark, reason, onLike, onDislike, onUnmark, onBack }) {
+  const canToggle = Boolean(onLike);
+  const [promptOpen, setPromptOpen] = useState(false);
   useKeymap(
     [
-      { keys: [...BACK_KEYS, Key.LEFT, Key.RETURN], action: Action.BACK },
-      { keys: LIKE_KEYS,    action: Action.TOGGLE_LIKE,    when: canToggle },
-      { keys: DISLIKE_KEYS, action: Action.TOGGLE_DISLIKE, when: canToggle },
+      { keys: [...BACK_KEYS, Key.LEFT, Key.RETURN], action: Action.BACK,            when: !promptOpen },
+      { keys: LIKE_KEYS,                            action: Action.TOGGLE_LIKE,     when: canToggle && !promptOpen },
+      { keys: DISLIKE_KEYS,                         action: Action.TOGGLE_DISLIKE,  when: canToggle && !promptOpen },
     ],
     {
       [Action.BACK]: onBack,
-      [Action.TOGGLE_LIKE]: () => onToggleLike?.(),
-      [Action.TOGGLE_DISLIKE]: () => onToggleDislike?.(),
+      [Action.TOGGLE_LIKE]: () => {
+        if (mark === 'like') onUnmark?.();
+        else onLike?.();
+      },
+      [Action.TOGGLE_DISLIKE]: () => {
+        if (mark === 'dislike') {
+          onUnmark?.();
+          return;
+        }
+        setPromptOpen(true);
+      },
     },
   );
+
+  const commitDislike = (r) => {
+    onDislike?.(r.trim());
+    setPromptOpen(false);
+  };
+  const cancelDislike = () => setPromptOpen(false);
 
   if (!event) {
     return (
@@ -72,6 +89,7 @@ export default function DetailsScreen({ event, mark, onToggleLike, onToggleDisli
         {price && <Field label="price">{price}</Field>}
         {event.source?.url && <Field label="source">{event.source.name ? `${event.source.name} — ${event.source.url}` : event.source.url}</Field>}
         {event.rationale && <Field label="why">{event.rationale}</Field>}
+        {mark === 'dislike' && reason && <Field label="dislike">{reason}</Field>}
       </Box>
       {event.description && (
         <Box flexDirection="column" marginTop={1}>
@@ -79,9 +97,13 @@ export default function DetailsScreen({ event, mark, onToggleLike, onToggleDisli
           <Text>{event.description}</Text>
         </Box>
       )}
-      <Box marginTop={1}>
-        <Text dimColor>{canToggle ? '[l] like · [d] dislike · ' : ''}enter/esc/←/b/⌫ back</Text>
-      </Box>
+      {promptOpen ? (
+        <DislikeReasonInput onCommit={commitDislike} onCancel={cancelDislike} />
+      ) : (
+        <Box marginTop={1}>
+          <Text dimColor>{canToggle ? '[l] like · [d] dislike · ' : ''}enter/esc/←/b/⌫ back</Text>
+        </Box>
+      )}
     </Box>
   );
 }

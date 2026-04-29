@@ -13,6 +13,7 @@ The `config.preferences.*` tunables referenced below (`deriveTraits`, `traitsRef
  * @property {string} title
  * @property {{ name: string, city: string }} venue
  * @property {string} startsAt
+ * @property {string} [reason]   // user note; only attached to disliked entries today
  */
 
 /**
@@ -35,13 +36,15 @@ The `config.preferences.*` tunables referenced below (`deriveTraits`, `traitsRef
 
 ## Capture
 
-`curator.recordFeedback({ liked: [id, ...], disliked: [id, ...] })`:
+`curator.recordFeedback({ liked: [id, ...], disliked: [id, ...], reasons?: { [id]: string } })`:
 
 1. Looks up the events from the last result set (or storage if not in memory).
-2. Builds `EventRef`s from the matched events.
+2. Builds `EventRef`s from the matched events. For ids in `disliked` with a non-empty `reasons[id]`, the trimmed string is attached as `EventRef.reason`.
 3. Merges into the current scope's preference (deduping by `id`).
 4. Optionally re-derives `derivedTraits` if `config.preferences.deriveTraits === true`.
 5. Persists.
+
+The `reasons` map is optional and only meaningful for disliked ids. The TUI captures it inline via a small text-input prompt that opens when the user toggles dislike on; pressing Enter commits (empty is fine — the dislike still records), Esc cancels the dislike entirely. Reasons flow into the `rankByPreference` and `derivePreferenceTraits` LLM prompts so the model can apply the user's stated principle, not just the literal example.
 
 ## Use
 

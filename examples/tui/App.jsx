@@ -30,6 +30,10 @@ export default function App({ dry }) {
   const [results, setResults] = useState([]);
   const [resultsCursor, setResultsCursor] = useState(0);
   const [resultsMarks, setResultsMarks] = useState(/** @type {Record<string, 'like'|'dislike'>} */ ({}));
+  // Free-text dislike reasons keyed by event id. Captured inline when the user
+  // marks an event disliked; submitted alongside the dislike id list so they
+  // flow into the persisted Preference and the LLM ranker.
+  const [resultsReasons, setResultsReasons] = useState(/** @type {Record<string, string>} */ ({}));
   const [detailsIndex, setDetailsIndex] = useState(0);
   const [detailsSource, setDetailsSource] = useState(/** @type {'results'|'history'} */ ('results'));
   const [savedQueries, setSavedQueries] = useState(/** @type {import('../../src/core/types.js').SavedQuery[]} */ ([]));
@@ -140,6 +144,7 @@ export default function App({ dry }) {
       setResults(events);
       setResultsCursor(0);
       setResultsMarks({});
+      setResultsReasons({});
       await refreshSaved();
       setScreen(Screen.RESULTS);
     } catch (e) {
@@ -170,8 +175,8 @@ export default function App({ dry }) {
 
   const handleEditKeys = () => setScreen(Screen.KEYS);
 
-  const handleFeedback = async ({ liked, disliked }) => {
-    await curator.recordFeedback({ liked, disliked });
+  const handleFeedback = async ({ liked, disliked, reasons }) => {
+    await curator.recordFeedback({ liked, disliked, reasons });
     setStatus(`saved feedback (${liked.length} liked, ${disliked.length} disliked)`);
     setActiveQuery(null);
     setScreen(Screen.SAVED_LIST);
@@ -269,6 +274,8 @@ export default function App({ dry }) {
             setCursor={setResultsCursor}
             marks={resultsMarks}
             setMarks={setResultsMarks}
+            reasons={resultsReasons}
+            setReasons={setResultsReasons}
             onSubmit={handleFeedback}
             onBack={() => setScreen(Screen.SAVED_LIST)}
             onOpenDetails={(idx) => { setDetailsSource('results'); setDetailsIndex(idx); setScreen(Screen.DETAILS); }}
@@ -284,6 +291,8 @@ export default function App({ dry }) {
             setCursor={setHistoryCursor}
             marks={{}}
             setMarks={() => {}}
+            reasons={{}}
+            setReasons={() => {}}
             onSubmit={() => { setActiveQuery(null); setScreen(Screen.SAVED_LIST); }}
             onBack={() => { setActiveQuery(null); setScreen(Screen.SAVED_LIST); }}
             onOpenDetails={(idx) => { setDetailsSource('history'); setDetailsIndex(idx); setScreen(Screen.DETAILS); }}
@@ -299,15 +308,25 @@ export default function App({ dry }) {
             <DetailsScreen
               event={event}
               mark={isHistory ? undefined : resultsMarks[event?.id]}
-              onToggleLike={isHistory ? undefined : () => {
+              reason={isHistory ? undefined : resultsReasons[event?.id]}
+              onLike={isHistory ? undefined : () => {
                 const id = event?.id;
                 if (!id) return;
-                setResultsMarks({ ...resultsMarks, [id]: resultsMarks[id] === 'like' ? undefined : 'like' });
+                setResultsMarks({ ...resultsMarks, [id]: 'like' });
+                if (resultsReasons[id]) setResultsReasons({ ...resultsReasons, [id]: undefined });
               }}
-              onToggleDislike={isHistory ? undefined : () => {
+              onDislike={isHistory ? undefined : (note) => {
                 const id = event?.id;
                 if (!id) return;
-                setResultsMarks({ ...resultsMarks, [id]: resultsMarks[id] === 'dislike' ? undefined : 'dislike' });
+                setResultsMarks({ ...resultsMarks, [id]: 'dislike' });
+                if (note) setResultsReasons({ ...resultsReasons, [id]: note });
+                else if (resultsReasons[id]) setResultsReasons({ ...resultsReasons, [id]: undefined });
+              }}
+              onUnmark={isHistory ? undefined : () => {
+                const id = event?.id;
+                if (!id) return;
+                setResultsMarks({ ...resultsMarks, [id]: undefined });
+                if (resultsReasons[id]) setResultsReasons({ ...resultsReasons, [id]: undefined });
               }}
               onBack={() => setScreen(isHistory ? Screen.HISTORY : Screen.RESULTS)}
             />

@@ -6,7 +6,8 @@ import { buildSystem } from './_system.js';
  * @property {string} queryText
  * @property {Array<{ id: string, title: string, venue: { name: string, city: string }, startsAt: string }>} candidates
  * @property {Array<{ title: string, venue: { name: string, city: string } }>} liked
- * @property {Array<{ title: string, venue: { name: string, city: string } }>} disliked
+ * @property {Array<{ title: string, venue: { name: string, city: string }, reason?: string }>} disliked
+ *   `reason` is the user's optional free-text note explaining why they disliked the example.
  * @property {string} [derivedTraits]
  * @property {string} [guidance]
  */
@@ -34,6 +35,7 @@ export function rankByPreferencePrompt({ city, queryText, candidates, liked, dis
     rules: [
       '- The <query> block is the user\'s original search topic — the primary filter signal. Omit events that are off-topic for that query, even if no <guidance> is given.',
       '- Also omit events that contradict <guidance> or that the <liked>/<disliked>/<traits> signals say the user will dislike.',
+      '- When a <disliked> entry carries a `reason`, treat it as the user\'s explicit principle and apply it generally to candidates — not only to literal lookalikes of the example.',
       '- The <guidance> covers BOTH filtering (omit) and ranking (order). Filter first, then rank what remains.',
       '- Keep events that match the user\'s clear interests, even when imperfect.',
       '- When uncertain, prefer to keep the event but rank it lower.',

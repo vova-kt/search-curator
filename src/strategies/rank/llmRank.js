@@ -34,7 +34,7 @@ export const llmRank = async (events, ctx) => {
     queryText,
     candidates,
     liked: liked.map((l) => ({ title: l.title, venue: l.venue })),
-    disliked: disliked.map((d) => ({ title: d.title, venue: d.venue })),
+    disliked: disliked.map((d) => ({ title: d.title, venue: d.venue, ...(d.reason ? { reason: d.reason } : {}) })),
     derivedTraits,
     guidance,
   });

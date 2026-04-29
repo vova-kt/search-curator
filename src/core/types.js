@@ -118,6 +118,7 @@
  * @property {string} title
  * @property {{ name: string, city: string }} venue
  * @property {string} startsAt
+ * @property {string} [reason]   // user-supplied note explaining the signal; only carried on disliked entries today
  */
 
 /**
