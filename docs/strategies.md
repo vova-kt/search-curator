@@ -27,7 +27,7 @@ export function fuzzyTitle({ threshold = 0.85 } = {}) {
 Live in `src/strategies/dedupe/`.
 
 - **`byId`** — collapses events that share the same content-derived `id` (hash of title / startsAt / venue / city). Catches "same event extracted from multiple source pages" without falsely collapsing distinct events listed on one page. Cheapest. Always run first.
-- **`fuzzyTitle`** — normalize title (lowercase, strip punctuation, collapse whitespace) and compare with same-day, same-city events; merge on token-Jaccard similarity ≥ threshold. Configurable threshold.
+- **`fuzzyTitle`** — normalize title (lowercase, strip punctuation, collapse whitespace) and compare with same-day, same-city events; merge when similarity ≥ threshold. Similarity is `max(token-Jaccard, char-trigram-Jaccard)` so it tolerates word-order/length differences (tokens) *and* typos or short titles (trigrams). Configurable threshold.
 - **`llmJudge`** — opt-in. Asks the LLM to merge a small set of borderline candidates. Only runs on pairs that survived `fuzzyTitle` but share a venue + date.
 
 > **Why not key on `source.url`?** A listing page (one URL) often yields multiple distinct events. Keying dedupe on the source URL would collapse them. Always dedupe on content (`id`) or content-similarity (`fuzzyTitle`), never on the page where we found the listing.

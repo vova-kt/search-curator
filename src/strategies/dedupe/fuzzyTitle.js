@@ -38,13 +38,39 @@ function sameCity(a, b) {
 }
 
 /**
- * Token Jaccard. Cheap, language-agnostic, plenty good at the 0.85 default.
+ * Hybrid similarity: max of token-Jaccard and char-trigram-Jaccard.
+ * Tokens handle word-order and length differences; trigrams catch typos
+ * and short titles where token overlap is sparse.
  * @param {string} a
  * @param {string} b
  */
 function titleSim(a, b) {
-  const sa = new Set(normalize(a).split(' ').filter(Boolean));
-  const sb = new Set(normalize(b).split(' ').filter(Boolean));
+  const na = normalize(a);
+  const nb = normalize(b);
+  return Math.max(jaccard(tokens(na), tokens(nb)), jaccard(trigrams(na), trigrams(nb)));
+}
+
+/** @param {string} s */
+function tokens(s) {
+  return new Set(s.split(' ').filter(Boolean));
+}
+
+/** @param {string} s */
+function trigrams(s) {
+  const out = new Set();
+  if (s.length < 3) {
+    if (s) out.add(s);
+    return out;
+  }
+  for (let i = 0; i <= s.length - 3; i++) out.add(s.slice(i, i + 3));
+  return out;
+}
+
+/**
+ * @param {Set<string>} sa
+ * @param {Set<string>} sb
+ */
+function jaccard(sa, sb) {
   if (sa.size === 0 && sb.size === 0) return 1;
   let inter = 0;
   for (const t of sa) if (sb.has(t)) inter++;
