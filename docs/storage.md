@@ -1,6 +1,8 @@
 # Storage
 
-Storage holds three things: **events** (so we can dedupe across sessions and recall what was shown), **preferences** (the user's accumulated likes/dislikes/filters), and **schema metadata** (migration version).
+Storage holds three things: **events** (so we can dedupe across sessions and recall what was shown), **preferences** (the user's accumulated likes/dislikes/filters), and a **generic kv** table for adapter-agnostic caches (e.g. query-expansion).
+
+The library is in active pre-`1.0` development — there is no migration system. The schema is defined once per adapter and applied idempotently on `init()`. When the schema needs to change, edit it in place and reset any local databases. Don't add migrations.
 
 ## Backends
 
@@ -50,36 +52,27 @@ Single row keyed by `scope` (`'global'` for unscoped, `'city:berlin'` or `'categ
 
 `getPreference()` returns the merge of `'global'` plus any scoped rows that match the current query (city/category). Scoped prefs override global.
 
-### `schema_version`
+### `kv`
 
-| column      | type    |
-| ----------- | ------- |
-| `version`   | INTEGER PK |
-| `applied_at` | TEXT  |
+Generic adapter-agnostic key-value table. Used by features that need persistent caches across runs (e.g. the `llmExpand` query-expansion strategy). Strings only — callers serialize their own JSON. No TTL; entries are explicitly bumped via `setKV`.
 
-## Migrations
+| column        | type    | notes                              |
+| ------------- | ------- | ---------------------------------- |
+| `key`         | TEXT PK | caller-namespaced (e.g. `qx:llmExpand:v1\|berlin\|comedy\|2026-05-01\|2026-05-15`) |
+| `value`       | TEXT    | caller-defined payload             |
+| `updated_at`  | TEXT    | ISO 8601, set on every `setKV`     |
 
-Migrations are an append-only array in `src/adapters/storage/migrations.js`:
+Adapter contract:
+- `getKV(key)` → `Promise<string \| undefined>`
+- `setKV(key, value)` → `Promise<void>` (upsert)
 
-```js
-export const migrations = [
-  { version: 1, up: `CREATE TABLE events (...); CREATE TABLE preferences (...);` },
-  { version: 2, up: `ALTER TABLE preferences ADD COLUMN derived_traits TEXT;` },
-];
-```
+## Schema definition
 
-On `init()`, the adapter:
-1. Ensures `schema_version` exists.
-2. Reads the current max version (0 if empty).
-3. Inside a transaction, applies every migration with `version > current` in order.
-4. Inserts a `schema_version` row per applied migration.
+- **SQLite** ([src/adapters/storage/sqlite.js](../src/adapters/storage/sqlite.js)) — a single `SCHEMA` constant of `CREATE TABLE IF NOT EXISTS …` statements, executed on every `init()`. Idempotent: re-opening an existing db is a no-op.
+- **IndexedDB** ([src/adapters/storage/indexeddb.js](../src/adapters/storage/indexeddb.js)) — DB version `1`. `onupgradeneeded` creates the three object stores if absent.
+- **Memory** — Maps; nothing to create.
 
-Rules:
-
-- **Migrations are append-only.** Never edit a shipped migration. Add a new one.
-- **No "down".** Reversing migrations adds bug surface and isn't needed for a local-data lib.
-- **One concern per migration.** Easier to read in a year.
-- **IndexedDB mirrors the same array.** The IndexedDB adapter uses `migrations.length` as its DB version and applies each in `onupgradeneeded` based on `event.oldVersion`.
+When the schema needs to change during development, edit the constants in place and recreate local databases (delete the sqlite file, clear the IndexedDB origin). No migration history.
 
 ## Clearing preferences
 

@@ -4,6 +4,7 @@
 
 /** @type {import('./types.js').Config} */
 export const DEFAULTS = Object.freeze({
+  dev: false,
   llm: {
     model: 'gpt-4o-mini',
     temperature: 0.2,
@@ -17,6 +18,9 @@ export const DEFAULTS = Object.freeze({
     defaultLimit: 10,
     defaultRollingDays: 14,
     extractConcurrency: 4,
+  },
+  queryExpansion: {
+    defaultLimit: 8,
   },
   dedupe: {
     fuzzyTitleThreshold: 0.85,

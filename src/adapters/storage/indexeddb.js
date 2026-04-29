@@ -1,15 +1,14 @@
 /**
  * IndexedDB storage adapter for the browser.
  *
- * Mirrors the SQLite schema. Uses three object stores: `events`, `preferences`, `meta`.
- * The DB version equals the latest migration.version, so adding a migration triggers
- * `onupgradeneeded` automatically.
+ * Mirrors the SQLite schema. Uses three object stores: `events`, `preferences`, `kv`.
  *
  * NOTE: keep this file dependency-free of `node:*` so it can be bundled for browsers.
  */
 
-import { migrations, CURRENT_SCHEMA_VERSION } from './migrations.js';
 import { scopeKey, effectiveScopeKeys, emptyPreference, mergePreferences } from './scope.js';
+
+const DB_VERSION = 1;
 
 /**
  * @param {{ name?: string }} [opts]
@@ -116,12 +115,19 @@ export function indexeddb({ name = 'events-curator' } = {}) {
       await txDone(tx);
     },
 
-    async schemaVersion() {
+    async getKV(key) {
       const d = ensureOpen();
-      const tx = d.transaction('meta', 'readonly');
-      const row = await reqAsPromise(tx.objectStore('meta').get('schema_version'));
+      const tx = d.transaction('kv', 'readonly');
+      const row = await reqAsPromise(tx.objectStore('kv').get(key));
       await txDone(tx);
-      return row?.value ?? CURRENT_SCHEMA_VERSION;
+      return row?.value;
+    },
+
+    async setKV(key, value) {
+      const d = ensureOpen();
+      const tx = d.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put({ key, value, updatedAt: new Date().toISOString() });
+      await txDone(tx);
     },
   };
 }
@@ -132,25 +138,12 @@ export function indexeddb({ name = 'events-curator' } = {}) {
  */
 function openDb(name) {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(name, CURRENT_SCHEMA_VERSION);
-    req.onupgradeneeded = (event) => {
+    const req = indexedDB.open(name, DB_VERSION);
+    req.onupgradeneeded = () => {
       const d = req.result;
-      const oldVersion = event.oldVersion ?? 0;
-      if (oldVersion < 1) {
-        d.createObjectStore('events', { keyPath: 'id' });
-        d.createObjectStore('preferences', { keyPath: 'scope' });
-        d.createObjectStore('meta', { keyPath: 'key' });
-      }
-      // Future migrations: add their object-store / index changes here, gated on oldVersion.
-      // The shared `migrations` array exists for documentation parity and SQLite reuse;
-      // IndexedDB requires imperative API calls per upgrade step.
-      const tx = req.transaction;
-      if (tx) {
-        const meta = tx.objectStore('meta');
-        for (const m of migrations) {
-          if (m.version > oldVersion) {
-            meta.put({ key: 'schema_version', value: m.version });
-          }
+      for (const store of ['events', 'preferences', 'kv']) {
+        if (!d.objectStoreNames.contains(store)) {
+          d.createObjectStore(store, { keyPath: store === 'preferences' ? 'scope' : store === 'events' ? 'id' : 'key' });
         }
       }
     };

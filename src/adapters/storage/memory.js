@@ -3,7 +3,6 @@
  * Mirrors the SQLite adapter's behavior.
  */
 
-import { CURRENT_SCHEMA_VERSION } from './migrations.js';
 import { scopeKey, effectiveScopeKeys, emptyPreference, mergePreferences } from './scope.js';
 
 /**
@@ -14,6 +13,8 @@ export function memory() {
   const events = new Map();
   /** @type {Map<string, import('../../core/types.js').Preference>} */
   const preferences = new Map();
+  /** @type {Map<string, string>} */
+  const kv = new Map();
   let initialized = false;
 
   function ensureOpen() {
@@ -28,6 +29,7 @@ export function memory() {
     async close() {
       events.clear();
       preferences.clear();
+      kv.clear();
       initialized = false;
     },
 
@@ -90,9 +92,14 @@ export function memory() {
       preferences.delete(scopeKey(scope));
     },
 
-    async schemaVersion() {
+    async getKV(key) {
       ensureOpen();
-      return CURRENT_SCHEMA_VERSION;
+      return kv.get(key);
+    },
+
+    async setKV(key, value) {
+      ensureOpen();
+      kv.set(key, value);
     },
   };
 }

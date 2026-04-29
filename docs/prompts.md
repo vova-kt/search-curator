@@ -49,6 +49,7 @@ Conventions:
 | `src/prompts/filterByPreference.js`   | Drop events that don't match user's traits and history      |
 | `src/prompts/rankByPreference.js`     | Reorder events by likely user interest                      |
 | `src/prompts/derivePreferenceTraits.js` | Summarize liked/disliked events into a short trait string |
+| `src/prompts/expandQueries.js`        | Produce diverse web-search queries for the discover stage   |
 
 ## Adding a prompt
 

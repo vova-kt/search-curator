@@ -5,34 +5,24 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sqlite } from '../src/adapters/storage/sqlite.js';
 import { makeEvent } from './_helpers.js';
-import { CURRENT_SCHEMA_VERSION } from '../src/adapters/storage/migrations.js';
 
 function tmpDb() {
   return join(tmpdir(), `events-curator-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
 }
 
-test('sqlite: init runs migrations to current version', async () => {
-  const path = tmpDb();
-  try {
-    const s = sqlite({ path });
-    await s.init();
-    assert.equal(await s.schemaVersion(), CURRENT_SCHEMA_VERSION);
-    await s.close();
-  } finally {
-    if (existsSync(path)) unlinkSync(path);
-  }
-});
-
-test('sqlite: re-init is idempotent (no double-apply of migrations)', async () => {
+test('sqlite: re-init on existing db is idempotent', async () => {
   const path = tmpDb();
   try {
     const s1 = sqlite({ path });
     await s1.init();
+    const e = makeEvent({ title: 'Persist' });
+    await s1.upsertEvents([e]);
     await s1.close();
 
     const s2 = sqlite({ path });
     await s2.init();
-    assert.equal(await s2.schemaVersion(), CURRENT_SCHEMA_VERSION);
+    const seen = await s2.getSeenIds([e.id]);
+    assert.deepEqual([...seen], [e.id]);
     await s2.close();
   } finally {
     if (existsSync(path)) unlinkSync(path);
@@ -51,6 +41,26 @@ test('sqlite: upsert + getSeenIds round-trip', async () => {
     const fetched = await s.getEvents([e.id]);
     assert.equal(fetched[0]?.title, 'Roundtrip');
     await s.close();
+  } finally {
+    if (existsSync(path)) unlinkSync(path);
+  }
+});
+
+test('sqlite: kv round-trip + overwrite + persists across reopen', async () => {
+  const path = tmpDb();
+  try {
+    const s1 = sqlite({ path });
+    await s1.init();
+    assert.equal(await s1.getKV('missing'), undefined);
+    await s1.setKV('k1', 'v1');
+    await s1.setKV('k1', 'v2');
+    assert.equal(await s1.getKV('k1'), 'v2');
+    await s1.close();
+
+    const s2 = sqlite({ path });
+    await s2.init();
+    assert.equal(await s2.getKV('k1'), 'v2');
+    await s2.close();
   } finally {
     if (existsSync(path)) unlinkSync(path);
   }

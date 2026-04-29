@@ -8,6 +8,7 @@ import { recordFeedback } from './stages/feedback.js';
 import { byId, fuzzyTitle } from './strategies/dedupe/index.js';
 import { rules } from './strategies/filter/index.js';
 import { byDate } from './strategies/rank/index.js';
+import { llmExpand, templates } from './strategies/queryExpansion/index.js';
 
 export { DEFAULTS } from './core/config.js';
 
@@ -35,6 +36,10 @@ export { DEFAULTS } from './core/config.js';
 export async function createCurator(opts) {
   const config = mergeConfig(DEFAULTS, opts.config);
   const strategies = {
+    queryExpansion: opts.strategies?.queryExpansion ?? [
+      llmExpand({ limit: config.queryExpansion.defaultLimit }),
+      templates(),
+    ],
     dedupe: opts.strategies?.dedupe ?? [byId, fuzzyTitle({ threshold: config.dedupe.fuzzyTitleThreshold })],
     filter: opts.strategies?.filter ?? [rules],
     rank:   opts.strategies?.rank   ?? [byDate],

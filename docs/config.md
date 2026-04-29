@@ -6,6 +6,7 @@ All tunable constants live in `src/core/config.js`. Adapters and stages read fro
 
 ```js
 export const DEFAULTS = Object.freeze({
+  dev: false,                    // set true to surface strategy errors instead of falling back
   llm: {
     model: 'gpt-4o-mini',
     temperature: 0.2,
@@ -20,6 +21,9 @@ export const DEFAULTS = Object.freeze({
     defaultRollingDays: 14,
     extractConcurrency: 4,
   },
+  queryExpansion: {
+    defaultLimit: 8,             // max queries `llmExpand` returns when no per-call limit is given
+  },
   dedupe: {
     fuzzyTitleThreshold: 0.85,
   },
@@ -27,11 +31,10 @@ export const DEFAULTS = Object.freeze({
     deriveTraits: true,
     traitsRefreshThreshold: 5,   // re-derive after N new liked/disliked
   },
-  storage: {
-    schemaVersion: undefined,    // computed from migrations.length
-  },
 });
 ```
+
+`dev` is the global "be loud about errors" switch. Strategies that have a graceful fallback (currently `llmExpand`) re-throw the underlying error in dev mode and warn-and-fallback in prod (the default).
 
 ## Override merge order
 

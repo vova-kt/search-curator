@@ -165,11 +165,13 @@
  * @property {(scope?: PreferenceScope) => Promise<Preference>} getPreference
  * @property {(updater: (current: Preference) => Preference, scope?: PreferenceScope) => Promise<Preference>} updatePreference
  * @property {(scope?: PreferenceScope) => Promise<void>} clearPreference
- * @property {() => Promise<number>} schemaVersion
+ * @property {(key: string) => Promise<string | undefined>} getKV
+ * @property {(key: string, value: string) => Promise<void>} setKV
  */
 
 /**
  * @typedef {Object} Strategies
+ * @property {QueryExpansionStrategy[]} queryExpansion
  * @property {Strategy[]} dedupe
  * @property {Strategy[]} filter
  * @property {Strategy[]} rank
@@ -180,10 +182,16 @@
  */
 
 /**
+ * @typedef {(ctx: Ctx) => Promise<string[]> | string[]} QueryExpansionStrategy
+ */
+
+/**
  * @typedef {Object} Config
+ * @property {boolean} dev
  * @property {{ model: string, temperature: number, maxTokens: number }} llm
  * @property {{ maxResultsPerAdapter: number, timeoutMs: number }} search
  * @property {{ defaultLimit: number, defaultRollingDays: number, extractConcurrency: number }} pipeline
+ * @property {{ defaultLimit: number }} queryExpansion
  * @property {{ fuzzyTitleThreshold: number }} dedupe
  * @property {{ deriveTraits: boolean, traitsRefreshThreshold: number }} preferences
  */

@@ -3,8 +3,43 @@
  */
 
 import Database from 'better-sqlite3';
-import { migrations, CURRENT_SCHEMA_VERSION } from './migrations.js';
 import { scopeKey, effectiveScopeKeys, emptyPreference, mergePreferences } from './scope.js';
+
+const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    starts_at TEXT NOT NULL,
+    ends_at TEXT,
+    city TEXT NOT NULL,
+    category TEXT NOT NULL,
+    venue_json TEXT NOT NULL,
+    source_json TEXT NOT NULL,
+    price_json TEXT,
+    subcategories_json TEXT,
+    raw TEXT,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_events_city_category ON events(city, category);
+  CREATE INDEX IF NOT EXISTS idx_events_starts_at ON events(starts_at);
+
+  CREATE TABLE IF NOT EXISTS preferences (
+    scope TEXT PRIMARY KEY,
+    liked_json TEXT NOT NULL,
+    disliked_json TEXT NOT NULL,
+    filters_json TEXT NOT NULL,
+    derived_traits TEXT,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS kv (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+`;
 
 /**
  * @param {{ path: string }} opts
@@ -24,7 +59,7 @@ export function sqlite({ path }) {
       db = new Database(path);
       db.pragma('journal_mode = WAL');
       db.pragma('foreign_keys = ON');
-      runMigrations(db);
+      db.exec(SCHEMA);
     },
 
     async close() {
@@ -133,40 +168,22 @@ export function sqlite({ path }) {
       d.prepare('DELETE FROM preferences WHERE scope = ?').run(key);
     },
 
-    async schemaVersion() {
+    async getKV(key) {
       const d = ensureOpen();
-      const row = /** @type {{ v: number | null } | undefined} */ (
-        d.prepare('SELECT MAX(version) AS v FROM schema_version').get()
+      const row = /** @type {{ value: string } | undefined} */ (
+        d.prepare('SELECT value FROM kv WHERE key = ?').get(key)
       );
-      return row?.v ?? 0;
+      return row?.value;
+    },
+
+    async setKV(key, value) {
+      const d = ensureOpen();
+      d.prepare(`
+        INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+      `).run(key, value, new Date().toISOString());
     },
   };
-}
-
-/**
- * @param {Database.Database} db
- */
-function runMigrations(db) {
-  db.exec(`CREATE TABLE IF NOT EXISTS schema_version (
-    version INTEGER PRIMARY KEY,
-    applied_at TEXT NOT NULL
-  )`);
-  const row = /** @type {{ v: number | null } | undefined} */ (
-    db.prepare('SELECT MAX(version) AS v FROM schema_version').get()
-  );
-  const current = row?.v ?? 0;
-  if (current >= CURRENT_SCHEMA_VERSION) return;
-
-  const insertVersion = db.prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)');
-  const tx = db.transaction(() => {
-    for (const m of migrations) {
-      if (m.version > current) {
-        db.exec(m.up);
-        insertVersion.run(m.version, new Date().toISOString());
-      }
-    }
-  });
-  tx();
 }
 
 /**

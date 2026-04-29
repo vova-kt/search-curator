@@ -2,14 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { memory } from '../src/adapters/storage/memory.js';
 import { makeEvent } from './_helpers.js';
-import { CURRENT_SCHEMA_VERSION } from '../src/adapters/storage/migrations.js';
-
-test('memory storage: init sets schemaVersion to current', async () => {
-  const s = memory();
-  await s.init();
-  assert.equal(await s.schemaVersion(), CURRENT_SCHEMA_VERSION);
-  await s.close();
-});
 
 test('memory storage: upsertEvents + getSeenIds', async () => {
   const s = memory();
@@ -63,4 +55,14 @@ test('memory storage: liked/disliked deduped on merge', async () => {
   await s.updatePreference((p) => ({ ...p, liked: [ref] }));
   const got = await s.getPreference();
   assert.equal(got.liked.length, 1);
+});
+
+test('memory storage: kv round-trip + overwrite', async () => {
+  const s = memory();
+  await s.init();
+  assert.equal(await s.getKV('missing'), undefined);
+  await s.setKV('k1', 'v1');
+  assert.equal(await s.getKV('k1'), 'v1');
+  await s.setKV('k1', 'v2');
+  assert.equal(await s.getKV('k1'), 'v2');
 });

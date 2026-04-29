@@ -11,6 +11,19 @@ export function stubLLM() {
     model: 'stub',
     async chat(req) {
       // Recognize each prompt by a phrase in `system` and return canned JSON.
+      if (req.system.includes('diverse web-search queries')) {
+        return {
+          text: '',
+          json: {
+            queries: [
+              'comedy events Berlin',
+              'stand-up Berlin May 2026',
+              'Comedy Shows Berlin this weekend',
+              'Kabarett Berlin',
+            ],
+          },
+        };
+      }
       if (req.system.includes('extract structured upcoming events')) {
         return {
           text: '',

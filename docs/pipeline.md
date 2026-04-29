@@ -27,7 +27,11 @@ Stages are pure with respect to `ctx` (they don't mutate it). They may emit even
 
 **In**: `ctx.query` → **Out**: `SearchHit[]` (treated as `events` with stub fields)
 
-Builds search queries from `(city, category, timeframe)` and fans them out across `ctx.search` adapters. Returns deduplicated `SearchHit { url, title, snippet, source }`.
+Composes search queries by running every strategy in `ctx.strategies.queryExpansion` (see [strategies.md](strategies.md)), lower-cases + trims for case-insensitive dedup, then fans the union out across `ctx.search` adapters. Returns deduplicated `SearchHit { url, title, snippet, source }`.
+
+Errors:
+- A single failing query-expansion strategy is warned about and skipped.
+- An empty `queryExpansion` array is a misconfiguration — `discover` throws.
 
 ### 2. extract (`src/stages/extract.js`)
 

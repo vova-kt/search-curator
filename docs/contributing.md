@@ -36,11 +36,10 @@ The lib is pre-`1.0`. Rename, restructure, drop fields, change return shapes whe
 - **A strategy** → see [strategies.md](strategies.md).
 - **A prompt** → see [prompts.md](prompts.md).
 - **A config key** → see [config.md](config.md).
-- **A storage column** → see [storage.md](storage.md), append a migration.
+- **A storage column** → see [storage.md](storage.md). Edit the schema in place across all three adapters and reset local databases — no migrations.
 
 ## Tests
 
 - `node --test` driven, files under `test/`.
 - `adapters/storage/memory.js` for any test that needs storage; never hit a real SQLite file in tests.
 - LLM and search calls are stubbed via fake adapters (`{ name: 'stub', chat/search: async () => ... }`).
-- Migrations get their own dedicated test (open memory adapter at version N, then upgrade).

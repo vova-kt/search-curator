@@ -2,13 +2,15 @@
 
 AI-curated upcoming events. Pluggable search engines, LLMs, storage, and ranking strategies. Runs in Node and (with the right adapters) in the browser.
 
+> **Status: active pre-`1.0` development.** Nothing is stable. Schemas, public APIs, config shapes, prompt contracts, and strategy interfaces all change without notice. There is no migration system for storage — when the schema changes, reset local databases. Don't add migrations, deprecation shims, or "legacy" branches.
+
 ## Development rules
 
 These are project rules. Follow them on every change.
 
 1. **Update docs and `CLAUDE.md` after each change.** Whenever behavior, architecture, public API, config, prompts, or strategies change, update the relevant `docs/*.md` page and this file. Docs are the source of truth, not commit messages. If you're not updating docs, you're not done.
 2. **Bug fixes target the root cause.** Do not patch symptoms, swallow errors, or special-case the failing input. Trace the failure to the underlying cause and fix it there. If the root cause is out of scope, say so explicitly and stop — don't ship a workaround silently.
-3. **No backward compatibility while in development.** The lib is pre-`1.0`. Rename, restructure, drop fields, change return shapes whenever it makes the design better. Don't add deprecation shims, "legacy" branches, or aliases. Just change it and update the docs.
+3. **No backward compatibility while in development.** The lib is pre-`1.0`. Rename, restructure, drop fields, change return shapes whenever it makes the design better. Don't add deprecation shims, "legacy" branches, aliases, or migrations. Just change it and update the docs.
 
 ## Where things live
 
@@ -18,7 +20,7 @@ The `docs/` directory is the canonical reference. Read the page that matches you
 - [docs/pipeline.md](docs/pipeline.md) — stages (discover → extract → dedupe → filter → rank → feedback), data flow, contracts
 - [docs/adapters.md](docs/adapters.md) — search, LLM, storage adapter contracts and how to add a new one
 - [docs/strategies.md](docs/strategies.md) — pluggable dedupe / filter / rank strategy contracts
-- [docs/storage.md](docs/storage.md) — schema, migrations, SQLite vs IndexedDB vs memory
+- [docs/storage.md](docs/storage.md) — schema, SQLite vs IndexedDB vs memory
 - [docs/prompts.md](docs/prompts.md) — where prompts live, the `({...args}) => {system, user}` shape, how to add one
 - [docs/preferences.md](docs/preferences.md) — preference shape, like/dislike capture, scoped clearing
 - [docs/config.md](docs/config.md) — defaults, override merge order, env-var bindings
@@ -32,7 +34,7 @@ The `docs/` directory is the canonical reference. Read the page that matches you
 - **Types**: [src/core/types.js](src/core/types.js) — JSDoc typedefs only, no runtime
 - **Config**: [src/core/config.js](src/core/config.js)
 - **Prompts**: [src/prompts/](src/prompts/) — one file per prompt, exports a function returning `{ system, user }`
-- **Storage migrations**: [src/adapters/storage/migrations.js](src/adapters/storage/migrations.js) — append-only array
+- **Storage schema**: defined inline in each adapter — see [src/adapters/storage/sqlite.js](src/adapters/storage/sqlite.js) and [src/adapters/storage/indexeddb.js](src/adapters/storage/indexeddb.js)
 
 ## Dev commands
 

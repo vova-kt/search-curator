@@ -1,5 +1,6 @@
 /**
- * Discover stage: build search queries, fan across search adapters, return SearchHit[].
+ * Discover stage: build search queries via queryExpansion strategies,
+ * fan across search adapters, return SearchHit[].
  * See docs/pipeline.md.
  */
 
@@ -8,7 +9,7 @@
  * @returns {Promise<import('../core/types.js').SearchHit[]>}
  */
 export async function discover(ctx) {
-  const queries = buildQueries(ctx);
+  const queries = await buildQueries(ctx);
   /** @type {import('../core/types.js').SearchHit[]} */
   const all = [];
   for (const adapter of ctx.search) {
@@ -32,17 +33,32 @@ export async function discover(ctx) {
 
 /**
  * @param {import('../core/types.js').Ctx} ctx
- * @returns {string[]}
+ * @returns {Promise<string[]>}
  */
-function buildQueries(ctx) {
-  const { city, category } = ctx.query;
-  // Diverse phrasings improve recall across different sites.
-  return [
-    `${category} events in ${city}`,
-    `upcoming ${category} ${city}`,
-    `${category} schedule ${city}`,
-    `live ${category} ${city} this month`,
-  ];
+async function buildQueries(ctx) {
+  const strategies = ctx.strategies.queryExpansion;
+  if (!strategies || strategies.length === 0) {
+    throw new Error('discover: no queryExpansion strategies configured');
+  }
+  /** @type {Map<string, string>} */
+  const seen = new Map();
+  for (const strat of strategies) {
+    let produced;
+    try {
+      produced = await strat(ctx);
+    } catch (err) {
+      // Mirrors the per-adapter error policy: a single strategy failure should not kill discovery.
+      // eslint-disable-next-line no-console
+      console.warn('[discover] queryExpansion strategy failed:', err instanceof Error ? err.message : err);
+      continue;
+    }
+    for (const q of produced ?? []) {
+      const key = q.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.set(key, q.trim());
+    }
+  }
+  return [...seen.values()];
 }
 
 /**

@@ -74,28 +74,29 @@ Stages call `ctx.llm.chat({ system, messages, json: true })` with prompts loaded
 ```js
 /**
  * @typedef {Object} StorageAdapter
- * @property {() => Promise<void>} init                                  // run migrations, open connection
+ * @property {() => Promise<void>} init                                  // open connection, ensure schema
  * @property {() => Promise<void>} close
  *
  * @property {(events: Event[]) => Promise<void>} upsertEvents
  * @property {(ids: string[]) => Promise<Set<string>>} getSeenIds
  * @property {(ids: string[]) => Promise<Event[]>} getEvents
  *
- * @property {() => Promise<Preference>} getPreference
- * @property {(updater: (current: Preference) => Preference) => Promise<Preference>} updatePreference
+ * @property {(scope?: { city?: string, category?: string }) => Promise<Preference>} getPreference
+ * @property {(updater: (current: Preference) => Preference, scope?: { city?: string, category?: string }) => Promise<Preference>} updatePreference
  * @property {(scope?: { city?: string, category?: string }) => Promise<void>} clearPreference
  *
- * @property {() => Promise<number>} schemaVersion
+ * @property {(key: string) => Promise<string | undefined>} getKV         // generic cache; callers namespace their own keys
+ * @property {(key: string, value: string) => Promise<void>} setKV
  */
 ```
 
 Built-in:
 
-- `adapters/storage/sqlite.js` — Node, `better-sqlite3`. Migrations applied on `init()`.
+- `adapters/storage/sqlite.js` — Node, `better-sqlite3`. Schema applied idempotently on `init()`.
 - `adapters/storage/indexeddb.js` — browser. Same conceptual schema, mapped to object stores.
 - `adapters/storage/memory.js` — for tests. Implements the full interface in-memory.
 
-See [storage.md](storage.md) for schema and migrations.
+See [storage.md](storage.md) for the schema. The library is in active pre-`1.0` development — there is no migration system; reset local databases when the schema changes.
 
 ## Adding a new adapter
 

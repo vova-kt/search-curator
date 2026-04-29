@@ -1,8 +1,10 @@
 # Strategies
 
-Strategies are pluggable functions over events. Three kinds: `dedupe`, `filter`, `rank`. They live in `src/strategies/` and are passed to `createCurator` as arrays — applied in order.
+Strategies are pluggable functions. Four kinds: `queryExpansion`, `dedupe`, `filter`, `rank`. They live in `src/strategies/` and are passed to `createCurator` as arrays — applied in order.
 
-## Contract
+## Contracts
+
+Event strategies (dedupe / filter / rank):
 
 ```js
 /**
@@ -10,7 +12,17 @@ Strategies are pluggable functions over events. Three kinds: `dedupe`, `filter`,
  */
 ```
 
-A strategy is a (potentially async) function returning a (possibly mutated) event list. It must not throw on empty input. It may return fewer events (filter / dedupe) or reorder them (rank). It may *not* fabricate new events.
+Query-expansion strategies are different — they produce search queries from `ctx.query`, not events:
+
+```js
+/**
+ * @typedef {(ctx: Ctx) => Promise<string[]> | string[]} QueryExpansionStrategy
+ */
+```
+
+An event strategy is a (potentially async) function returning a (possibly mutated) event list. It must not throw on empty input. It may return fewer events (filter / dedupe) or reorder them (rank). It may *not* fabricate new events.
+
+A query-expansion strategy returns search-query strings. The discover stage runs all configured strategies in order, lower-cases + trims for dedup, and fans the union out across search adapters. A single strategy that throws is logged and skipped — others continue. If the strategy *array* is empty, `discover` throws (misconfiguration).
 
 If a strategy needs configuration, expose a factory:
 
@@ -21,6 +33,19 @@ export function fuzzyTitle({ threshold = 0.85 } = {}) {
   };
 }
 ```
+
+## Query-expansion strategies
+
+Live in `src/strategies/queryExpansion/`.
+
+- **`templates()`** — deterministic, zero-LLM. Returns the four classic phrasings: `"<category> events in <city>"`, `"upcoming <category> <city>"`, `"<category> schedule <city>"`, `"live <category> <city> this month"`. Cheap, safe fallback, useful in tests.
+- **`llmExpand({ limit } = {})`** — opt-in by default. One LLM call (`expandQueriesPrompt`) produces a diverse list mixing synonyms / register, local-language variants, and timeframe-specific phrasings derived from the resolved `from`–`to` window. `limit` defaults to `ctx.config.queryExpansion.defaultLimit` (8). Results are persisted in storage KV under key `qx:llmExpand:v1|<city>|<category>|<from>|<to>` so the same `(city, category, timeframe)` triple skips the LLM on repeat. The `:v1` suffix lets us bust the cache by bumping the version when the prompt materially changes.
+
+  Failure semantics:
+  - In `config.dev` mode, the underlying error (network, malformed JSON, no `queries` field, empty result) is re-thrown.
+  - Otherwise, a `console.warn` is logged and the strategy falls back to the result of `templates()` so the pipeline still has queries to run.
+
+The default in `createCurator` is `[llmExpand(), templates()]` — both run, deduped — so prod-mode users get LLM-driven recall plus a non-LLM safety net even if `llmExpand` falls back to templates internally (the duplicates are dropped at the dedupe step).
 
 ## Dedupe strategies
 
