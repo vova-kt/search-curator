@@ -5,9 +5,9 @@ Two runnable entry points under `examples/`. Both wire up the curator with defau
 ## Setup
 
 ```bash
-cp .env.example .env
-# fill in OPENAI_API_KEY and TAVILY_API_KEY
 npm install
+# either export OPENAI_API_KEY and TAVILY_API_KEY in your shell,
+# or let the TUI prompt for them on first run (stored at ~/.config/events-curator/config.json)
 ```
 
 ## Script — one-shot
@@ -33,52 +33,50 @@ Flags:
 
 Use case: smoke testing, regression checks, quick demos.
 
-## CLI — interactive
+## TUI — interactive
 
-`examples/cli.js` is a small REPL exercising the full feedback loop.
+`examples/tui/` is an [ink](https://github.com/vadimdemedes/ink)-based TUI exercising the full feedback loop. Run it via:
 
 ```bash
-node examples/cli.js
+npm run example:cli   # alias for: tsx examples/tui/index.jsx
+node examples/tui/index.jsx --dry   # offline, stub adapters, in-memory storage
 ```
 
-Session shape:
+### Key handling
 
-```
-> city: Berlin
-> category: comedy
-> days: 14
+On first run the TUI prompts for `OPENAI_API_KEY` and `TAVILY_API_KEY` and writes them to `~/.config/events-curator/config.json` (chmod `0600`). Subsequent runs read from that file. Environment variables (`OPENAI_API_KEY`, `TAVILY_API_KEY`, `OPENAI_MODEL`, `EVENTS_DB_PATH`) always override the stored values. Re-enter keys any time from the search screen with `[k]`.
 
-[1] Open mic at Comedy Café — Fri 2 May, 20:00 — Comedy Café
-[2] Anna Mateur live    — Sat 3 May, 21:00 — Roter Salon
-[3] …
+The TUI runs fullscreen — it switches to the terminal's alternate-screen buffer on start and restores your scrollback on exit.
 
-like (e.g., 1 3): 2 3
-dislike: 1
+### Screens
 
-saved. run again with same filters? (y/n): y
-…
-```
+1. **Keys** — only shown when keys are missing. Tab through fields, last `enter` saves.
+2. **Search** — form for `city`, `category`, `days`, `limit`. Tab through; after the last field you land on a hotkey menu.
+3. **Progress** — live stage list (build queries → search → extract → dedupe → filter → rank → save) with a spinner on the active stage and counts (`extract 12/40 → 18`). Driven by `curator.curate()`'s `onProgress` callback (see [pipeline.md](pipeline.md)).
+4. **Results** — ranked list. `↑/↓` to move, `[l]` toggle like, `[d]` toggle dislike, `enter` to save feedback, `q`/`esc` to skip.
+
+### Search-screen hotkeys
+
+| Key | Effect                                  |
+| --- | --------------------------------------- |
+| `r` | run curation with current params        |
+| `e` | re-edit fields                          |
+| `k` | edit stored API keys                    |
+| `c` | clear preferences for the current city  |
+| `C` | clear all preferences                   |
+| `q` | quit                                    |
 
 What it exercises:
 
 - Full pipeline (`curate()`)
 - Feedback capture (`recordFeedback()`)
-- Preference scoping (you can change city mid-session)
-- `clearPreferences()` via the `:clear` command
-
-REPL commands:
-
-| Command      | Effect                                                  |
-| ------------ | ------------------------------------------------------- |
-| `:clear`     | wipe all preferences                                    |
-| `:clear Berlin` | wipe city-scoped prefs                              |
-| `:show`      | print current preferences                               |
-| `:exit`      | quit, closing the storage handle                        |
+- Preference scoping (change `city` between runs)
+- `clearPreferences()` via `c` / `C` hotkeys
 
 ## Tuning workflow
 
 1. Run the script with `--dry` to confirm the pipeline works without network/credit cost.
 2. Run with real keys against a small `--limit`.
-3. Use the CLI to mark likes/dislikes across a few sessions.
+3. Use the TUI (`npm run example:cli`) to mark likes/dislikes across a few sessions.
 4. Inspect `events.db` directly with `sqlite3` if the curator behavior surprises you.
 5. Adjust prompts in `src/prompts/` or strategies in `src/strategies/`. Re-run.

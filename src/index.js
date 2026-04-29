@@ -22,8 +22,14 @@ export { DEFAULTS } from './core/config.js';
  */
 
 /**
+ * @typedef {Object} CurateOptions
+ * @property {import('./core/types.js').ProgressListener} [onProgress]
+ * @property {AbortSignal} [signal]
+ */
+
+/**
  * @typedef {Object} Curator
- * @property {(query: import('./core/types.js').Query) => Promise<{ events: import('./core/types.js').Event[] }>} curate
+ * @property {(query: import('./core/types.js').Query, opts?: CurateOptions) => Promise<{ events: import('./core/types.js').Event[] }>} curate
  * @property {(picks: { liked: string[], disliked: string[] }) => Promise<void>} recordFeedback
  * @property {(scope?: import('./core/types.js').PreferenceScope) => Promise<void>} clearPreferences
  * @property {() => Promise<void>} close
@@ -53,7 +59,7 @@ export async function createCurator(opts) {
   let lastQuery = null;
 
   return {
-    async curate(query) {
+    async curate(query, curateOpts) {
       const preference = await opts.storage.getPreference({ city: query.city, category: String(query.category) });
       /** @type {import('./core/types.js').Ctx} */
       const ctx = {
@@ -64,6 +70,8 @@ export async function createCurator(opts) {
         config,
         query,
         preference,
+        onProgress: curateOpts?.onProgress,
+        signal: curateOpts?.signal,
       };
       const events = await runCuration(ctx);
       lastResults = events;
