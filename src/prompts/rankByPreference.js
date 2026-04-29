@@ -2,7 +2,7 @@ import { buildSystem } from './_system.js';
 
 /**
  * @typedef {Object} RankByPreferenceArgs
- * @property {Array<{ id: string, title: string, category: string, venue: { name: string, city: string }, startsAt: string, subcategories?: string[] }>} candidates
+ * @property {Array<{ id: string, title: string, venue: { name: string, city: string }, startsAt: string, subcategories?: string[] }>} candidates
  * @property {Array<{ title: string, venue: { name: string, city: string }, subcategories?: string[] }>} liked
  * @property {Array<{ title: string, venue: { name: string, city: string }, subcategories?: string[] }>} disliked
  * @property {string} [derivedTraits]
@@ -31,6 +31,7 @@ export function rankByPreferencePrompt({ candidates, liked, disliked, derivedTra
     ].join('\n'),
     rules: [
       '- Omit events that contradict <guidance> or that the <liked>/<disliked>/<traits> signals say the user will dislike.',
+      '- The <guidance> covers BOTH filtering (omit) and ranking (order). Filter first, then rank what remains.',
       '- Keep events that match the user\'s clear interests, even when imperfect.',
       '- When uncertain, prefer to keep the event but rank it lower.',
       '- Each rationale is around five words and references the specific match (artist, sub-genre, venue type, time of day) — not generic praise.',
@@ -39,7 +40,7 @@ export function rankByPreferencePrompt({ candidates, liked, disliked, derivedTra
     ].join('\n'),
     inputFormat: [
       'The user message contains, in order, any of these XML blocks (some may be omitted when empty):',
-      '  <guidance>free-form text from the user about what they want this time</guidance>',
+      '  <guidance>free-form filter-and-rank instructions from the user (e.g. "no metal, prefer small venues, weeknights ok")</guidance>',
       '  <traits>one-line summary of the user\'s long-term preferences</traits>',
       '  <liked>JSON array of liked example events</liked>',
       '  <disliked>JSON array of disliked example events</disliked>',

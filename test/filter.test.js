@@ -10,7 +10,7 @@ import { makeEvent } from './_helpers.js';
 function ctx(extra = {}) {
   return /** @type {any} */ ({
     preference: { liked: [], disliked: [], explicitFilters: {} },
-    query: { city: 'Berlin', category: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' } },
+    query: { city: 'Berlin', queryText: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' } },
     config: { dedupe: { fuzzyTitleThreshold: 0.85 } },
     ...extra,
   });
@@ -54,7 +54,7 @@ test('rules: query filters override preference filters', async () => {
   ];
   const out = await rules(events, ctx({
     preference: { liked: [], disliked: [], explicitFilters: { price: { max: 100 } } },
-    query: { city: 'Berlin', category: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' }, filters: { price: { max: 10 } } },
+    query: { city: 'Berlin', queryText: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' }, filters: { price: { max: 10 } } },
   }));
   assert.equal(out.length, 1);
   assert.equal(out[0].title, 'Cheap show');

@@ -10,8 +10,8 @@ import { scopeKey, effectiveScopeKeys, emptyPreference, mergePreferences } from 
 
 const DB_VERSION = 1;
 
-/** @param {{ city: string, category: string }} ref */
-const savedKey = (ref) => `${ref.city}|${ref.category}`;
+/** @param {{ city: string, queryText: string }} ref */
+const savedKey = (ref) => `${ref.city}|${ref.queryText}`;
 
 /**
  * @param {{ name?: string }} [opts]
@@ -110,7 +110,7 @@ export function indexeddb({ name = 'events-curator' } = {}) {
       const d = ensureOpen();
       const tx = d.transaction('preferences', 'readwrite');
       const store = tx.objectStore('preferences');
-      if (!scope || (!scope.city && !scope.category)) {
+      if (!scope || (!scope.city && !scope.queryText)) {
         store.clear();
       } else {
         store.delete(scopeKey(scope));

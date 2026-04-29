@@ -66,7 +66,7 @@ export async function createCurator(opts) {
 
   return {
     async curate(query, curateOpts) {
-      const preference = await opts.storage.getPreference({ city: query.city, category: String(query.category) });
+      const preference = await opts.storage.getPreference({ city: query.city, queryText: query.queryText });
       /** @type {import('./core/types.js').Ctx} */
       const ctx = {
         llm: opts.llm,
@@ -84,7 +84,7 @@ export async function createCurator(opts) {
       lastQuery = query;
       // Bump last-searched timestamp on a matching saved query, if any.
       // No-op when this query wasn't run from a saved entry.
-      await opts.storage.touchSavedQuery({ city: query.city, category: String(query.category) });
+      await opts.storage.touchSavedQuery({ city: query.city, queryText: query.queryText });
       return { events };
     },
 
@@ -92,7 +92,7 @@ export async function createCurator(opts) {
       if (!lastQuery) {
         throw new Error('recordFeedback called before any curate()');
       }
-      const preference = await opts.storage.getPreference({ city: lastQuery.city, category: String(lastQuery.category) });
+      const preference = await opts.storage.getPreference({ city: lastQuery.city, queryText: lastQuery.queryText });
       /** @type {import('./core/types.js').Ctx} */
       const ctx = {
         llm: opts.llm,

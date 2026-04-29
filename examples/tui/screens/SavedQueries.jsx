@@ -34,7 +34,7 @@ function relativeTime(iso) {
  */
 export default function SavedQueriesScreen({ queries, onRun, onEdit, onNew, onDelete, onEditKeys, onQuit }) {
   const [cursor, setCursor] = useState(0);
-  const [confirmDelete, setConfirmDelete] = useState(/** @type {null | { city: string, category: string }} */ (null));
+  const [confirmDelete, setConfirmDelete] = useState(/** @type {null | { city: string, queryText: string }} */ (null));
 
   const safeCursor = Math.min(cursor, Math.max(0, queries.length - 1));
   const selected = queries[safeCursor];
@@ -61,7 +61,7 @@ export default function SavedQueriesScreen({ queries, onRun, onEdit, onNew, onDe
     } else if (queries.length > 0 && input === 'e') {
       if (selected) onEdit(selected);
     } else if (queries.length > 0 && input === 'd') {
-      if (selected) setConfirmDelete({ city: selected.city, category: selected.category });
+      if (selected) setConfirmDelete({ city: selected.city, queryText: selected.queryText });
     } else if (input === 'K' && onEditKeys) {
       onEditKeys();
     } else if (input === 'q') {
@@ -88,10 +88,10 @@ export default function SavedQueriesScreen({ queries, onRun, onEdit, onNew, onDe
         {queries.map((q, i) => {
           const focused = i === safeCursor;
           return (
-            <Box key={`${q.city}|${q.category}`}>
+            <Box key={`${q.city}|${q.queryText}`}>
               <Text color={focused ? 'cyan' : undefined}>{focused ? '› ' : '  '}</Text>
               <Box width={18}><Text>{q.city}</Text></Box>
-              <Box width={20}><Text>{q.category}</Text></Box>
+              <Box width={28}><Text>{q.queryText}</Text></Box>
               <Box width={8}><Text dimColor>{q.days}d</Text></Box>
               <Box width={8}><Text dimColor>×{q.limit}</Text></Box>
               <Text dimColor>last: {relativeTime(q.lastSearchedAt)}</Text>
@@ -102,7 +102,7 @@ export default function SavedQueriesScreen({ queries, onRun, onEdit, onNew, onDe
       <Box marginTop={1}>
         {confirmDelete ? (
           <Text color="yellow">
-            delete {confirmDelete.city} / {confirmDelete.category}? [y/N]
+            delete {confirmDelete.city} / {confirmDelete.queryText}? [y/N]
           </Text>
         ) : (
           <Text dimColor>

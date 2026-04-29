@@ -80,7 +80,7 @@ export default function App({ dry }) {
       : openai({ apiKey: keys.openaiApiKey, model: keys.openaiModel });
     const search = dry ? [stubSearch()] : [tavily({ apiKey: keys.tavilyApiKey })];
     const storage = dry ? memory() : sqlite({ path: keys.dbPath });
-    // The TUI opts into LLM rank so saved-query rankGuidance and 5-word
+    // The TUI opts into LLM rank so saved-query guidance and 5-word
     // rationales actually flow through.
     const c = await createCurator({ llm, search, storage, strategies: { rank: [llmRank] } });
     setCurator(c);
@@ -103,7 +103,7 @@ export default function App({ dry }) {
   const runSaved = async (q) => {
     setActiveQuery(q);
     setProgress({});
-    setProgressLabel(`curating ${q.category} in ${q.city}…`);
+    setProgressLabel(`curating "${q.queryText}" in ${q.city}…`);
     setScreen(Screen.PROGRESS);
 
     const onProgress = (e) => {
@@ -123,11 +123,11 @@ export default function App({ dry }) {
     try {
       const { events } = await curator.curate({
         city: q.city,
-        category: q.category,
+        queryText: q.queryText,
         timeframe: { rolling: { days: q.days } },
         limit: q.limit,
         filters: { excludeKeywords: q.excludeKeywords ?? [] },
-        rankGuidance: q.rankGuidance,
+        guidance: q.guidance,
       }, { onProgress });
       setResults(events);
       await refreshSaved();
@@ -140,7 +140,7 @@ export default function App({ dry }) {
   const handleSaveQuery = async (q) => {
     await curator.upsertSavedQuery(q);
     await refreshSaved();
-    setStatus(`saved ${q.city} / ${q.category}`);
+    setStatus(`saved ${q.city} / ${q.queryText}`);
     setEditing(null);
     setScreen(Screen.SAVED_LIST);
   };
@@ -155,7 +155,7 @@ export default function App({ dry }) {
   const handleDeleteQuery = async (ref) => {
     await curator.deleteSavedQuery(ref);
     await refreshSaved();
-    setStatus(`deleted ${ref.city} / ${ref.category}`);
+    setStatus(`deleted ${ref.city} / ${ref.queryText}`);
   };
 
   const handleEditKeys = () => setScreen(Screen.KEYS);

@@ -7,10 +7,10 @@
  * @returns {string}
  */
 export function scopeKey(scope) {
-  if (!scope || (!scope.city && !scope.category)) return 'global';
+  if (!scope || (!scope.city && !scope.queryText)) return 'global';
   const parts = [];
   if (scope.city) parts.push(`city:${scope.city.toLowerCase()}`);
-  if (scope.category) parts.push(`category:${scope.category.toLowerCase()}`);
+  if (scope.queryText) parts.push(`query:${scope.queryText.toLowerCase()}`);
   return parts.join('|');
 }
 
@@ -25,9 +25,9 @@ export function effectiveScopeKeys(scope) {
   /** @type {string[]} */
   const keys = ['global'];
   if (scope?.city) keys.push(`city:${scope.city.toLowerCase()}`);
-  if (scope?.category) keys.push(`category:${scope.category.toLowerCase()}`);
-  if (scope?.city && scope?.category) {
-    keys.push(`city:${scope.city.toLowerCase()}|category:${scope.category.toLowerCase()}`);
+  if (scope?.queryText) keys.push(`query:${scope.queryText.toLowerCase()}`);
+  if (scope?.city && scope?.queryText) {
+    keys.push(`city:${scope.city.toLowerCase()}|query:${scope.queryText.toLowerCase()}`);
   }
   return keys;
 }

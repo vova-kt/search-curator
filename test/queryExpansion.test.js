@@ -18,7 +18,7 @@ function makeCtx({ llm, storage, config, query }) {
     config: mergeConfig(DEFAULTS, config),
     query: {
       city: 'Berlin',
-      category: 'comedy',
+      queryText: 'comedy',
       timeframe: { from: '2026-05-01', to: '2026-05-15' },
       ...query,
     },
@@ -26,7 +26,7 @@ function makeCtx({ llm, storage, config, query }) {
   });
 }
 
-test('templates: returns four deterministic phrasings of (city, category)', async () => {
+test('templates: returns four deterministic phrasings of (city, queryText)', async () => {
   const ctx = makeCtx({ llm: stubLLM(() => ({})), storage: memory() });
   const out = await templates()(ctx);
   assert.equal(out.length, 4);

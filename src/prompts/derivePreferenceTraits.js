@@ -2,8 +2,8 @@ import { buildSystem } from './_system.js';
 
 /**
  * @typedef {Object} DerivePreferenceTraitsArgs
- * @property {Array<{ title: string, category: string, venue: { name: string, city: string }, startsAt: string, subcategories?: string[] }>} liked
- * @property {Array<{ title: string, category: string, venue: { name: string, city: string }, startsAt: string, subcategories?: string[] }>} disliked
+ * @property {Array<{ title: string, venue: { name: string, city: string }, startsAt: string, subcategories?: string[] }>} liked
+ * @property {Array<{ title: string, venue: { name: string, city: string }, startsAt: string, subcategories?: string[] }>} disliked
  */
 
 /**

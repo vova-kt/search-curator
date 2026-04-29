@@ -81,9 +81,9 @@ Stages call `ctx.llm.chat({ system, messages, json: true })` with prompts loaded
  * @property {(ids: string[]) => Promise<Set<string>>} getSeenIds
  * @property {(ids: string[]) => Promise<Event[]>} getEvents
  *
- * @property {(scope?: { city?: string, category?: string }) => Promise<Preference>} getPreference
- * @property {(updater: (current: Preference) => Preference, scope?: { city?: string, category?: string }) => Promise<Preference>} updatePreference
- * @property {(scope?: { city?: string, category?: string }) => Promise<void>} clearPreference
+ * @property {(scope?: { city?: string, queryText?: string }) => Promise<Preference>} getPreference
+ * @property {(updater: (current: Preference) => Preference, scope?: { city?: string, queryText?: string }) => Promise<Preference>} updatePreference
+ * @property {(scope?: { city?: string, queryText?: string }) => Promise<void>} clearPreference
  *
  * @property {(key: string) => Promise<string | undefined>} getKV         // generic cache; callers namespace their own keys
  * @property {(key: string, value: string) => Promise<void>} setKV

@@ -1,6 +1,6 @@
 /**
  * LLM-driven query expansion. One call covers timeframe phrasings, local-language variants,
- * and synonym diversity. Persisted via the storage KV table, keyed by (city, category, timeframe).
+ * and synonym diversity. Persisted via the storage KV table, keyed by (city, queryText, timeframe).
  *
  * Failure mode: in `config.dev` mode, the underlying error is re-thrown so misconfigurations
  * are loud during development. In prod (default), it logs a warning and falls back to the
@@ -11,7 +11,7 @@ import { expandQueriesPrompt } from '../../prompts/expandQueries.js';
 import { resolveTimeframe } from '../../core/timeframe.js';
 import { templates } from './templates.js';
 
-const CACHE_PREFIX = 'qx:llmExpand:v1';
+const CACHE_PREFIX = 'qx:llmExpand:v2';
 
 /**
  * @param {{ limit?: number }} [opts]
@@ -21,7 +21,7 @@ export function llmExpand({ limit } = {}) {
   return async function llmExpandStrategy(ctx) {
     const cap = limit ?? ctx.config.queryExpansion.defaultLimit;
     const tf = resolveTimeframe(ctx.query.timeframe, ctx.config.pipeline.defaultRollingDays);
-    const key = cacheKey(ctx.query.city, String(ctx.query.category), tf);
+    const key = cacheKey(ctx.query.city, ctx.query.queryText, tf);
 
     const cached = await ctx.storage.getKV(key);
     if (cached) {
@@ -33,7 +33,7 @@ export function llmExpand({ limit } = {}) {
     try {
       const prompt = expandQueriesPrompt({
         city: ctx.query.city,
-        category: String(ctx.query.category),
+        queryText: ctx.query.queryText,
         timeframe: tf,
         limit: cap,
       });
@@ -64,11 +64,11 @@ export function llmExpand({ limit } = {}) {
 
 /**
  * @param {string} city
- * @param {string} category
+ * @param {string} queryText
  * @param {{ from: string, to: string }} tf
  */
-function cacheKey(city, category, tf) {
-  return `${CACHE_PREFIX}|${normalize(city)}|${normalize(category)}|${tf.from}|${tf.to}`;
+function cacheKey(city, queryText, tf) {
+  return `${CACHE_PREFIX}|${normalize(city)}|${normalize(queryText)}|${tf.from}|${tf.to}`;
 }
 
 /** @param {string} s */

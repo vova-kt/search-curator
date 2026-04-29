@@ -19,8 +19,8 @@ export function memory() {
   const savedQueries = new Map();
   let initialized = false;
 
-  /** @param {{ city: string, category: string }} ref */
-  const savedKey = (ref) => `${ref.city}|${ref.category}`;
+  /** @param {{ city: string, queryText: string }} ref */
+  const savedKey = (ref) => `${ref.city}|${ref.queryText}`;
 
   function ensureOpen() {
     if (!initialized) throw new Error('storage not initialized: call init() first');
@@ -91,7 +91,7 @@ export function memory() {
 
     async clearPreference(scope) {
       ensureOpen();
-      if (!scope || (!scope.city && !scope.category)) {
+      if (!scope || (!scope.city && !scope.queryText)) {
         preferences.clear();
         return;
       }

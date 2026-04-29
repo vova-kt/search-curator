@@ -72,21 +72,21 @@ test('sqlite: saved queries persist across reopen and bump on touch', async () =
     const s1 = sqlite({ path });
     await s1.init();
     await s1.upsertSavedQuery({
-      city: 'Berlin', category: 'comedy', days: 14, limit: 10,
-      excludeKeywords: ['open mic'], rankGuidance: 'intimate venues',
+      city: 'Berlin', queryText: 'stand-up comedy', days: 14, limit: 10,
+      excludeKeywords: ['open mic'], guidance: 'intimate venues',
       createdAt: '2026-04-01T00:00:00Z',
     });
-    await s1.touchSavedQuery({ city: 'Berlin', category: 'comedy' });
+    await s1.touchSavedQuery({ city: 'Berlin', queryText: 'stand-up comedy' });
     await s1.close();
 
     const s2 = sqlite({ path });
     await s2.init();
     const list = await s2.listSavedQueries();
     assert.equal(list.length, 1);
-    assert.equal(list[0].rankGuidance, 'intimate venues');
+    assert.equal(list[0].guidance, 'intimate venues');
     assert.deepEqual(list[0].excludeKeywords, ['open mic']);
     assert.ok(list[0].lastSearchedAt);
-    await s2.deleteSavedQuery({ city: 'Berlin', category: 'comedy' });
+    await s2.deleteSavedQuery({ city: 'Berlin', queryText: 'stand-up comedy' });
     assert.equal((await s2.listSavedQueries()).length, 0);
     await s2.close();
   } finally {

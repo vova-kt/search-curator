@@ -9,7 +9,6 @@ Preferences are how the curator gets better with use. The user marks events as l
  * @typedef {Object} EventRef
  * @property {string} id
  * @property {string} title
- * @property {string} category
  * @property {{ name: string, city: string }} venue
  * @property {string} startsAt
  * @property {string[]} [subcategories]
@@ -48,20 +47,20 @@ Preferences are how the curator gets better with use. The user marks events as l
 During curation:
 
 - `filter` strategies receive `ctx.preference`. `rules` reads `explicitFilters` (and any `Query.filters` overrides).
-- `rank` strategies use the same. `llmRank` is a combined filter + rank pass: it weights events that resemble `liked` examples, de-weights those resembling `disliked`, and omits clearly-poor matches against `derivedTraits` and `Query.rankGuidance` from its output.
+- `rank` strategies use the same. `llmRank` is a combined filter + rank pass: it weights events that resemble `liked` examples, de-weights those resembling `disliked`, and omits clearly-poor matches against `derivedTraits` and `Query.guidance` from its output.
 
 ## Scoping
 
-Preferences can be **global** or scoped by `city` and/or `category`. Stored as separate rows keyed by scope; `getPreference()` returns the merge of `global` and any matching scoped rows, with scoped overriding global.
+Preferences can be **global** or scoped by `city` and/or `queryText`. Stored as separate rows keyed by scope; `getPreference()` returns the merge of `global` and any matching scoped rows, with scoped overriding global.
 
-Example: a user might like loud concerts in Berlin but quiet jazz in Vienna. Two scopes, no contradiction.
+Example: in Berlin a user may like intimate stand-up and dislike open mics, but in Vienna prefer big-room jazz. Two scopes, no contradiction.
 
 Scope key formats:
 
 - `'global'`
 - `'city:<lowercased-city>'`
-- `'category:<lowercased-category>'`
-- `'city:<lowercased-city>|category:<lowercased-category>'`
+- `'query:<lowercased-queryText>'`
+- `'city:<lowercased-city>|query:<lowercased-queryText>'`
 
 ## Clearing
 
@@ -69,8 +68,8 @@ Scope key formats:
 
 - No arg: wipes all preference rows.
 - `{ city }`: clears `'city:<city>'`.
-- `{ category }`: clears `'category:<category>'`.
-- `{ city, category }`: clears the combined-scope row.
+- `{ queryText }`: clears `'query:<queryText>'`.
+- `{ city, queryText }`: clears the combined-scope row.
 
 Cached events are not deleted — see [storage.md](storage.md) for why.
 

@@ -29,7 +29,6 @@ export async function recordFeedback(picks, candidates, ctx) {
   const toRef = (e) => ({
     id: e.id,
     title: e.title,
-    category: String(e.category),
     venue: { name: e.venue.name, city: e.venue.city },
     startsAt: e.startsAt,
     subcategories: e.subcategories,
@@ -86,7 +85,7 @@ function mergeRefs(a, b) {
  * @returns {import('../core/types.js').PreferenceScope}
  */
 function scopeFromQuery(q) {
-  return { city: q.city, category: String(q.category) };
+  return { city: q.city, queryText: q.queryText };
 }
 
 /**
@@ -96,8 +95,8 @@ function scopeFromQuery(q) {
  */
 async function deriveTraits(pref, ctx) {
   const prompt = derivePreferenceTraitsPrompt({
-    liked: pref.liked.map((l) => ({ title: l.title, category: l.category, venue: l.venue, startsAt: l.startsAt, subcategories: l.subcategories })),
-    disliked: pref.disliked.map((d) => ({ title: d.title, category: d.category, venue: d.venue, startsAt: d.startsAt, subcategories: d.subcategories })),
+    liked: pref.liked.map((l) => ({ title: l.title, venue: l.venue, startsAt: l.startsAt, subcategories: l.subcategories })),
+    disliked: pref.disliked.map((d) => ({ title: d.title, venue: d.venue, startsAt: d.startsAt, subcategories: d.subcategories })),
   });
   const resp = await ctx.llm.chat({
     system: prompt.system,

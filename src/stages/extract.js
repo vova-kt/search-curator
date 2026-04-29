@@ -123,7 +123,7 @@ function batchPages(pages, batchTokenCap, charsPerToken) {
 async function extractFromBatch(batch, ctx, timeframe) {
   const prompt = extractEventsPrompt({
     city: ctx.query.city,
-    category: String(ctx.query.category),
+    queryText: ctx.query.queryText,
     timeframe,
     pages: batch.map(({ hit, pageText }) => ({
       sourceName: hit.source,
@@ -157,7 +157,6 @@ async function extractFromBatch(batch, ctx, timeframe) {
       startsAt: r.startsAt,
       endsAt: r.endsAt,
       venue: r.venue,
-      category: r.category ?? ctx.query.category,
       subcategories: r.subcategories,
       source: { name: r.source.name, url: r.source.url, fetchedAt },
       price: r.price,

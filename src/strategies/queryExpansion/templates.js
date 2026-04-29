@@ -1,5 +1,5 @@
 /**
- * Deterministic, zero-LLM query expansion. Four diverse phrasings of (city, category).
+ * Deterministic, zero-LLM query expansion. Four diverse phrasings of (city, queryText).
  */
 
 /**
@@ -7,12 +7,12 @@
  */
 export function templates() {
   return function templatesStrategy(ctx) {
-    const { city, category } = ctx.query;
+    const { city, queryText } = ctx.query;
     return [
-      `${category} events in ${city}`,
-      `upcoming ${category} ${city}`,
-      `${category} schedule ${city}`,
-      `live ${category} ${city} this month`,
+      `${queryText} events in ${city}`,
+      `upcoming ${queryText} ${city}`,
+      `${queryText} schedule ${city}`,
+      `${queryText} ${city} this month`,
     ];
   };
 }

@@ -13,7 +13,6 @@ const SCHEMA = `
     starts_at TEXT NOT NULL,
     ends_at TEXT,
     city TEXT NOT NULL,
-    category TEXT NOT NULL,
     venue_json TEXT NOT NULL,
     source_json TEXT NOT NULL,
     price_json TEXT,
@@ -21,7 +20,7 @@ const SCHEMA = `
     first_seen_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL
   );
-  CREATE INDEX IF NOT EXISTS idx_events_city_category ON events(city, category);
+  CREATE INDEX IF NOT EXISTS idx_events_city ON events(city);
   CREATE INDEX IF NOT EXISTS idx_events_starts_at ON events(starts_at);
 
   CREATE TABLE IF NOT EXISTS preferences (
@@ -41,14 +40,14 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS saved_queries (
     city TEXT NOT NULL,
-    category TEXT NOT NULL,
+    query_text TEXT NOT NULL,
     days INTEGER NOT NULL,
     query_limit INTEGER NOT NULL,
     exclude_keywords_json TEXT NOT NULL,
-    rank_guidance TEXT,
+    guidance TEXT,
     created_at TEXT NOT NULL,
     last_searched_at TEXT,
-    PRIMARY KEY (city, category)
+    PRIMARY KEY (city, query_text)
   );
 `;
 
@@ -83,11 +82,11 @@ export function sqlite({ path }) {
       const now = new Date().toISOString();
       const stmt = d.prepare(`
         INSERT INTO events (
-          id, title, description, starts_at, ends_at, city, category,
+          id, title, description, starts_at, ends_at, city,
           venue_json, source_json, price_json, subcategories_json,
           first_seen_at, last_seen_at
         ) VALUES (
-          @id, @title, @description, @starts_at, @ends_at, @city, @category,
+          @id, @title, @description, @starts_at, @ends_at, @city,
           @venue_json, @source_json, @price_json, @subcategories_json,
           @first_seen_at, @last_seen_at
         )
@@ -170,7 +169,7 @@ export function sqlite({ path }) {
 
     async clearPreference(scope) {
       const d = ensureOpen();
-      if (!scope || (!scope.city && !scope.category)) {
+      if (!scope || (!scope.city && !scope.queryText)) {
         d.prepare('DELETE FROM preferences').run();
         return;
       }
@@ -189,10 +188,10 @@ export function sqlite({ path }) {
       return rows.map(rowToSavedQuery);
     },
 
-    async getSavedQuery({ city, category }) {
+    async getSavedQuery({ city, queryText }) {
       const d = ensureOpen();
       const row = /** @type {SavedQueryRow | undefined} */ (
-        d.prepare('SELECT * FROM saved_queries WHERE city = ? AND category = ?').get(city, category)
+        d.prepare('SELECT * FROM saved_queries WHERE city = ? AND query_text = ?').get(city, queryText)
       );
       return row ? rowToSavedQuery(row) : undefined;
     },
@@ -200,7 +199,7 @@ export function sqlite({ path }) {
     async upsertSavedQuery(q) {
       const d = ensureOpen();
       const existing = /** @type {{ created_at: string } | undefined} */ (
-        d.prepare('SELECT created_at FROM saved_queries WHERE city = ? AND category = ?').get(q.city, q.category)
+        d.prepare('SELECT created_at FROM saved_queries WHERE city = ? AND query_text = ?').get(q.city, q.queryText)
       );
       const next = {
         ...q,
@@ -208,32 +207,32 @@ export function sqlite({ path }) {
       };
       d.prepare(`
         INSERT INTO saved_queries (
-          city, category, days, query_limit, exclude_keywords_json, rank_guidance,
+          city, query_text, days, query_limit, exclude_keywords_json, guidance,
           created_at, last_searched_at
         ) VALUES (
-          @city, @category, @days, @query_limit, @exclude_keywords_json, @rank_guidance,
+          @city, @query_text, @days, @query_limit, @exclude_keywords_json, @guidance,
           @created_at, @last_searched_at
         )
-        ON CONFLICT(city, category) DO UPDATE SET
+        ON CONFLICT(city, query_text) DO UPDATE SET
           days = excluded.days,
           query_limit = excluded.query_limit,
           exclude_keywords_json = excluded.exclude_keywords_json,
-          rank_guidance = excluded.rank_guidance,
+          guidance = excluded.guidance,
           last_searched_at = excluded.last_searched_at
       `).run(savedQueryToRow(next));
       return next;
     },
 
-    async deleteSavedQuery({ city, category }) {
+    async deleteSavedQuery({ city, queryText }) {
       const d = ensureOpen();
-      d.prepare('DELETE FROM saved_queries WHERE city = ? AND category = ?').run(city, category);
+      d.prepare('DELETE FROM saved_queries WHERE city = ? AND query_text = ?').run(city, queryText);
     },
 
-    async touchSavedQuery({ city, category }) {
+    async touchSavedQuery({ city, queryText }) {
       const d = ensureOpen();
       d.prepare(
-        'UPDATE saved_queries SET last_searched_at = ? WHERE city = ? AND category = ?',
-      ).run(new Date().toISOString(), city, category);
+        'UPDATE saved_queries SET last_searched_at = ? WHERE city = ? AND query_text = ?',
+      ).run(new Date().toISOString(), city, queryText);
     },
 
     async getKV(key) {
@@ -262,7 +261,6 @@ export function sqlite({ path }) {
  * @property {string} starts_at
  * @property {string|null} ends_at
  * @property {string} city
- * @property {string} category
  * @property {string} venue_json
  * @property {string} source_json
  * @property {string|null} price_json
@@ -293,7 +291,6 @@ function eventToRow(e, now) {
     starts_at: e.startsAt,
     ends_at: e.endsAt ?? null,
     city: e.venue.city,
-    category: e.category,
     venue_json: JSON.stringify(e.venue),
     source_json: JSON.stringify(e.source),
     price_json: e.price ? JSON.stringify(e.price) : null,
@@ -315,7 +312,6 @@ function rowToEvent(row) {
     startsAt: row.starts_at,
     endsAt: row.ends_at ?? undefined,
     venue: JSON.parse(row.venue_json),
-    category: row.category,
     source: JSON.parse(row.source_json),
     price: row.price_json ? JSON.parse(row.price_json) : undefined,
     subcategories: row.subcategories_json ? JSON.parse(row.subcategories_json) : undefined,
@@ -342,11 +338,11 @@ function preferenceToRow(key, p) {
 /**
  * @typedef {Object} SavedQueryRow
  * @property {string} city
- * @property {string} category
+ * @property {string} query_text
  * @property {number} days
  * @property {number} query_limit
  * @property {string} exclude_keywords_json
- * @property {string|null} rank_guidance
+ * @property {string|null} guidance
  * @property {string} created_at
  * @property {string|null} last_searched_at
  */
@@ -357,11 +353,11 @@ function preferenceToRow(key, p) {
 function savedQueryToRow(q) {
   return {
     city: q.city,
-    category: q.category,
+    query_text: q.queryText,
     days: q.days,
     query_limit: q.limit,
     exclude_keywords_json: JSON.stringify(q.excludeKeywords ?? []),
-    rank_guidance: q.rankGuidance ?? null,
+    guidance: q.guidance ?? null,
     created_at: q.createdAt,
     last_searched_at: q.lastSearchedAt ?? null,
   };
@@ -374,11 +370,11 @@ function savedQueryToRow(q) {
 function rowToSavedQuery(row) {
   return {
     city: row.city,
-    category: row.category,
+    queryText: row.query_text,
     days: row.days,
     limit: row.query_limit,
     excludeKeywords: JSON.parse(row.exclude_keywords_json),
-    rankGuidance: row.rank_guidance ?? undefined,
+    guidance: row.guidance ?? undefined,
     createdAt: row.created_at,
     lastSearchedAt: row.last_searched_at ?? undefined,
   };

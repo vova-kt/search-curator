@@ -4,21 +4,21 @@ import TextInput from 'ink-text-input';
 
 /**
  * @typedef {Object} EditorValues
- * @property {string} city
- * @property {string} category
+ * @property {string} queryText
  * @property {string} days
+ * @property {string} city
  * @property {string} limit
  * @property {string} excludeKeywords    // comma-separated
- * @property {string} rankGuidance       // free text
+ * @property {string} guidance           // free text — combined filter + rank
  */
 
 const FIELDS = /** @type {const} */ ([
-  { key: 'city',             label: 'city' },
-  { key: 'category',         label: 'category' },
+  { key: 'queryText',        label: 'query' },
   { key: 'days',             label: 'days',  numeric: true },
+  { key: 'city',             label: 'city' },
   { key: 'limit',            label: 'limit', numeric: true },
   { key: 'excludeKeywords',  label: 'exclude (comma-sep)' },
-  { key: 'rankGuidance',     label: 'rank guidance' },
+  { key: 'guidance',         label: 'filter & rank prefs' },
 ]);
 
 /**
@@ -39,28 +39,28 @@ const fromCsv = (s) => s.split(',').map((x) => x.trim()).filter((x) => x.length 
  */
 export default function QueryEditorScreen({ existing, onSave, onSaveAndRun, onCancel }) {
   const [values, setValues] = useState(/** @type {EditorValues} */ ({
-    city: existing?.city ?? '',
-    category: existing?.category ?? '',
+    queryText: existing?.queryText ?? '',
     days: String(existing?.days ?? 14),
+    city: existing?.city ?? '',
     limit: String(existing?.limit ?? 10),
     excludeKeywords: csv(existing?.excludeKeywords ?? []),
-    rankGuidance: existing?.rankGuidance ?? '',
+    guidance: existing?.guidance ?? '',
   }));
   const [idx, setIdx] = useState(0);
   const [mode, setMode] = useState(/** @type {'form'|'menu'} */ ('form'));
 
   const buildSavedQuery = () => ({
     city: values.city.trim(),
-    category: values.category.trim(),
+    queryText: values.queryText.trim(),
     days: Number(values.days) || 14,
     limit: Number(values.limit) || 10,
     excludeKeywords: fromCsv(values.excludeKeywords),
-    rankGuidance: values.rankGuidance.trim() || undefined,
+    guidance: values.guidance.trim() || undefined,
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     lastSearchedAt: existing?.lastSearchedAt,
   });
 
-  const valid = values.city.trim().length > 0 && values.category.trim().length > 0;
+  const valid = values.city.trim().length > 0 && values.queryText.trim().length > 0;
 
   useInput((input, key) => {
     if (key.escape) {
@@ -125,7 +125,7 @@ export default function QueryEditorScreen({ existing, onSave, onSaveAndRun, onCa
           <Text dimColor>
             {valid
               ? '[s] save · [r] save+run · [e] edit · [c] cancel'
-              : '[e] edit (city + category required) · [c] cancel'}
+              : '[e] edit (city + query required) · [c] cancel'}
           </Text>
         )}
       </Box>

@@ -50,7 +50,7 @@ test('memory storage: clearPreference() with no args wipes all', async () => {
 test('memory storage: liked/disliked deduped on merge', async () => {
   const s = memory();
   await s.init();
-  const ref = { id: 'evt_x', title: 'X', category: 'comedy', venue: { name: 'V', city: 'Berlin' }, startsAt: '2026-05-02' };
+  const ref = { id: 'evt_x', title: 'X', venue: { name: 'V', city: 'Berlin' }, startsAt: '2026-05-02' };
   await s.updatePreference((p) => ({ ...p, liked: [ref] }));
   await s.updatePreference((p) => ({ ...p, liked: [ref] }));
   const got = await s.getPreference();
@@ -61,29 +61,29 @@ test('memory storage: saved queries CRUD + ordering by lastSearchedAt', async ()
   const s = memory();
   await s.init();
   await s.upsertSavedQuery({
-    city: 'Berlin', category: 'comedy', days: 14, limit: 10,
-    excludeKeywords: ['open mic'], rankGuidance: 'small venues',
+    city: 'Berlin', queryText: 'stand-up comedy', days: 14, limit: 10,
+    excludeKeywords: ['open mic'], guidance: 'small venues',
     createdAt: '2026-04-01T00:00:00Z',
   });
   await s.upsertSavedQuery({
-    city: 'Berlin', category: 'concert', days: 30, limit: 20,
+    city: 'Berlin', queryText: 'live concerts', days: 30, limit: 20,
     excludeKeywords: [], createdAt: '2026-04-02T00:00:00Z',
   });
   let list = await s.listSavedQueries();
   assert.equal(list.length, 2);
   // Newer createdAt first when neither has been searched.
-  assert.equal(list[0].category, 'concert');
+  assert.equal(list[0].queryText, 'live concerts');
 
-  await s.touchSavedQuery({ city: 'Berlin', category: 'comedy' });
+  await s.touchSavedQuery({ city: 'Berlin', queryText: 'stand-up comedy' });
   list = await s.listSavedQueries();
-  assert.equal(list[0].category, 'comedy');
+  assert.equal(list[0].queryText, 'stand-up comedy');
   assert.ok(list[0].lastSearchedAt);
 
-  const got = await s.getSavedQuery({ city: 'Berlin', category: 'comedy' });
+  const got = await s.getSavedQuery({ city: 'Berlin', queryText: 'stand-up comedy' });
   assert.deepEqual(got.excludeKeywords, ['open mic']);
-  assert.equal(got.rankGuidance, 'small venues');
+  assert.equal(got.guidance, 'small venues');
 
-  await s.deleteSavedQuery({ city: 'Berlin', category: 'concert' });
+  await s.deleteSavedQuery({ city: 'Berlin', queryText: 'live concerts' });
   list = await s.listSavedQueries();
   assert.equal(list.length, 1);
 });
@@ -92,11 +92,11 @@ test('memory storage: upsertSavedQuery preserves createdAt on update', async () 
   const s = memory();
   await s.init();
   const initial = await s.upsertSavedQuery({
-    city: 'Berlin', category: 'comedy', days: 14, limit: 10, excludeKeywords: [],
+    city: 'Berlin', queryText: 'stand-up comedy', days: 14, limit: 10, excludeKeywords: [],
     createdAt: '2026-04-01T00:00:00Z',
   });
   const updated = await s.upsertSavedQuery({
-    city: 'Berlin', category: 'comedy', days: 30, limit: 5, excludeKeywords: ['x'],
+    city: 'Berlin', queryText: 'stand-up comedy', days: 30, limit: 5, excludeKeywords: ['x'],
     createdAt: '2099-01-01T00:00:00Z', // ignored
   });
   assert.equal(updated.createdAt, initial.createdAt);
@@ -107,7 +107,7 @@ test('memory storage: upsertSavedQuery preserves createdAt on update', async () 
 test('memory storage: touchSavedQuery on missing row is a no-op', async () => {
   const s = memory();
   await s.init();
-  await s.touchSavedQuery({ city: 'Nowhere', category: 'theater' });
+  await s.touchSavedQuery({ city: 'Nowhere', queryText: 'theater' });
   assert.equal((await s.listSavedQueries()).length, 0);
 });
 

@@ -15,8 +15,8 @@ export const DEFAULTS = Object.freeze({
     timeoutMs: 15_000,
   },
   pipeline: {
-    defaultLimit: 10,
-    defaultRollingDays: 14,
+    defaultLimit: 20,
+    defaultRollingDays: 90,
     extractConcurrency: 4,
     extractBatchTokenCap: 10_000,
     charsPerToken: 4,

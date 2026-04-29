@@ -13,7 +13,6 @@ export function makeEvent(overrides = {}) {
     title: 'Sample Event',
     startsAt: '2026-05-02T20:00:00+00:00',
     venue: { name: 'The Venue', city: 'Berlin' },
-    category: 'comedy',
     source: { name: 'stub', url: 'https://example.com/sample' },
   };
   const merged = { ...base, ...overrides, venue: { ...base.venue, ...(overrides.venue ?? {}) } };

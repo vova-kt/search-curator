@@ -18,7 +18,7 @@ All three implement the same `StorageAdapter` interface (see [adapters.md](adapt
 
 Logical tables (mapped to object stores in IndexedDB):
 
-> **Saved queries.** The TUI persists user-defined searches in a `saved_queries` table (object store `savedQueries` on IndexedDB). Identity is `(city, category)`; days, limit, exclude-keywords and rank guidance are editable fields on the row. The curator's `curate()` calls `touchSavedQuery({ city, category })` after a successful run to bump `last_searched_at`. See the schema below.
+> **Saved queries.** The TUI persists user-defined searches in a `saved_queries` table (object store `savedQueries` on IndexedDB). Identity is `(city, queryText)`; days, limit, exclude-keywords and natural-language guidance are editable fields on the row. The curator's `curate()` calls `touchSavedQuery({ city, queryText })` after a successful run to bump `last_searched_at`. See the schema below.
 
 ### `events`
 
@@ -30,7 +30,6 @@ Logical tables (mapped to object stores in IndexedDB):
 | `starts_at`   | TEXT     | ISO 8601                                   |
 | `ends_at`     | TEXT     | nullable                                   |
 | `city`        | TEXT     |                                            |
-| `category`    | TEXT     | comedy, concert, …                         |
 | `venue_json`  | TEXT     | JSON-encoded venue                         |
 | `source_json` | TEXT     | JSON-encoded source `{name, url}`          |
 | `price_json`  | TEXT     | nullable, JSON                             |
@@ -40,7 +39,7 @@ Logical tables (mapped to object stores in IndexedDB):
 
 ### `preferences`
 
-Single row keyed by `scope` (`'global'` for unscoped, `'city:berlin'` or `'category:comedy'` for scoped).
+Single row keyed by `scope` (`'global'` for unscoped, `'city:berlin'`, `'query:indie live music'`, or the combined form `'city:berlin|query:indie live music'`).
 
 | column            | type    | notes                              |
 | ----------------- | ------- | ---------------------------------- |
@@ -51,30 +50,30 @@ Single row keyed by `scope` (`'global'` for unscoped, `'city:berlin'` or `'categ
 | `derived_traits`  | TEXT    | nullable, LLM-summarized string    |
 | `updated_at`      | TEXT    |                                    |
 
-`getPreference()` returns the merge of `'global'` plus any scoped rows that match the current query (city/category). Scoped prefs override global.
+`getPreference()` returns the merge of `'global'` plus any scoped rows that match the current query (city / queryText). Scoped prefs override global.
 
 ### `saved_queries`
 
-User-defined searches. PK is the composite `(city, category)` so the same topic in the same city has exactly one persisted entry.
+User-defined searches. PK is the composite `(city, query_text)` so the same query in the same city has exactly one persisted entry. Editing the freeform query text replaces the saved row in place.
 
 | column                  | type    | notes                                          |
 | ----------------------- | ------- | ---------------------------------------------- |
 | `city`                  | TEXT    | part of PK                                     |
-| `category`              | TEXT    | part of PK                                     |
+| `query_text`            | TEXT    | part of PK; user's freeform query              |
 | `days`                  | INTEGER | rolling timeframe in days                      |
 | `query_limit`           | INTEGER | max events returned (column avoids the `LIMIT` keyword) |
 | `exclude_keywords_json` | TEXT    | JSON `string[]`; flows into `Query.filters.excludeKeywords` |
-| `rank_guidance`         | TEXT    | nullable free-text, appended to the rank LLM prompt |
+| `guidance`              | TEXT    | nullable free-text — natural-language filter + rank preferences, appended to the rank LLM prompt |
 | `created_at`            | TEXT    | preserved across upserts                       |
 | `last_searched_at`      | TEXT    | nullable; bumped by `touchSavedQuery`          |
 
 Adapter contract (all three backends):
 
 - `listSavedQueries()` → ordered by `lastSearchedAt DESC NULLS LAST, createdAt DESC`.
-- `getSavedQuery({ city, category })`
+- `getSavedQuery({ city, queryText })`
 - `upsertSavedQuery(SavedQuery)` — preserves the original `createdAt` on update.
-- `deleteSavedQuery({ city, category })`
-- `touchSavedQuery({ city, category })` — no-op if no row matches, so `curate()` can call it unconditionally.
+- `deleteSavedQuery({ city, queryText })`
+- `touchSavedQuery({ city, queryText })` — no-op if no row matches, so `curate()` can call it unconditionally.
 
 ### `kv`
 
@@ -82,7 +81,7 @@ Generic adapter-agnostic key-value table. Used by features that need persistent 
 
 | column        | type    | notes                              |
 | ------------- | ------- | ---------------------------------- |
-| `key`         | TEXT PK | caller-namespaced (e.g. `qx:llmExpand:v1\|berlin\|comedy\|2026-05-01\|2026-05-15`) |
+| `key`         | TEXT PK | caller-namespaced (e.g. `qx:llmExpand:v2\|berlin\|indie live music\|2026-05-01\|2026-05-15`) |
 | `value`       | TEXT    | caller-defined payload             |
 | `updated_at`  | TEXT    | ISO 8601, set on every `setKV`     |
 
@@ -104,8 +103,8 @@ When the schema needs to change during development, edit the constants in place 
 
 - No `scope` → wipes all preference rows (`global` and scoped).
 - `{ city: 'Berlin' }` → deletes `'city:berlin'`. `'global'` and other scopes untouched.
-- `{ category: 'comedy' }` → deletes `'category:comedy'`.
-- `{ city, category }` → deletes the most specific scope `'city:<x>|category:<y>'`.
+- `{ queryText: 'indie live music' }` → deletes `'query:indie live music'`.
+- `{ city, queryText }` → deletes the most specific scope `'city:<x>|query:<y>'`.
 
 This does **not** delete cached events; it only resets the user's stated preferences. Events are independent because we may still want cross-session dedupe even after a preference reset.
 

@@ -5,10 +5,6 @@
  */
 
 /**
- * @typedef {'comedy'|'concert'|'theater'|'festival'|'sports'|'exhibition'|'other'} EventCategory
- */
-
-/**
  * @typedef {Object} Geo
  * @property {number} lat
  * @property {number} lng
@@ -46,7 +42,6 @@
  * @property {string} startsAt           // ISO 8601
  * @property {string} [endsAt]           // ISO 8601
  * @property {Venue} venue
- * @property {EventCategory|string} category
  * @property {string[]} [subcategories]
  * @property {EventSource} source
  * @property {EventPrice} [price]
@@ -79,26 +74,26 @@
 /**
  * @typedef {Object} Query
  * @property {string} city
- * @property {EventCategory|string} category
+ * @property {string} queryText        // user's freeform initial query (e.g., "indie live music")
  * @property {Timeframe | { rolling: RollingTimeframe }} timeframe
  * @property {Partial<ExplicitFilters>} [filters]
  * @property {number} [limit]
- * @property {string} [rankGuidance]   // free-text appended to the LLM rank prompt
+ * @property {string} [guidance]       // free-text filter & ranking preferences for the LLM
  */
 
 /**
- * Persisted user-defined search. Identity is `(city, category)`.
+ * Persisted user-defined search. Identity is `(city, queryText)`.
  *
- * `excludeKeywords` and `rankGuidance` are merged into the runtime `Query`
+ * `excludeKeywords` and `guidance` are merged into the runtime `Query`
  * by the TUI when the user runs a saved query.
  *
  * @typedef {Object} SavedQuery
  * @property {string} city
- * @property {string} category
+ * @property {string} queryText
  * @property {number} days
  * @property {number} limit
  * @property {string[]} excludeKeywords
- * @property {string} [rankGuidance]
+ * @property {string} [guidance]
  * @property {string} createdAt
  * @property {string} [lastSearchedAt]
  */
@@ -106,7 +101,7 @@
 /**
  * @typedef {Object} SavedQueryRef
  * @property {string} city
- * @property {string} category
+ * @property {string} queryText
  */
 
 /**
@@ -121,7 +116,6 @@
  * @typedef {Object} EventRef
  * @property {string} id
  * @property {string} title
- * @property {string} category
  * @property {{ name: string, city: string }} venue
  * @property {string} startsAt
  * @property {string[]} [subcategories]
@@ -139,7 +133,7 @@
 /**
  * @typedef {Object} PreferenceScope
  * @property {string} [city]
- * @property {string} [category]
+ * @property {string} [queryText]
  */
 
 /**

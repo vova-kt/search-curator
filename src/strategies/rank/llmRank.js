@@ -15,7 +15,7 @@ import { rankByPreferencePrompt } from '../../prompts/rankByPreference.js';
 export const llmRank = async (events, ctx) => {
   if (events.length <= 1) return events;
   const { liked, disliked, derivedTraits } = ctx.preference;
-  const guidance = ctx.query.rankGuidance;
+  const guidance = ctx.query.guidance;
 
   // Skip the call when there's nothing for the LLM to act on.
   if (liked.length === 0 && disliked.length === 0 && !derivedTraits && !guidance) {
@@ -25,7 +25,6 @@ export const llmRank = async (events, ctx) => {
   const candidates = events.map((e) => ({
     id: e.id,
     title: e.title,
-    category: e.category,
     venue: { name: e.venue.name, city: e.venue.city },
     startsAt: e.startsAt,
     subcategories: e.subcategories,

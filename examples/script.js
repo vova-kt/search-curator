@@ -12,8 +12,8 @@ import { stubLLM, stubSearch } from './_stubs.js';
 
 const args = parseArgs(process.argv.slice(2));
 
-if (!args.city || !args.category) {
-  console.error('Usage: node examples/script.js --city <city> --category <category> [--days N | --from ISO --to ISO] [--limit N] [--db path] [--dry]');
+if (!args.city || !args.query) {
+  console.error('Usage: node examples/script.js --city <city> --query <text> [--days N | --from ISO --to ISO] [--limit N] [--guidance text] [--db path] [--dry]');
   process.exit(1);
 }
 
@@ -37,9 +37,10 @@ const timeframe = args.from && args.to
 
 const { events } = await curator.curate({
   city: args.city,
-  category: args.category,
+  queryText: args.query,
   timeframe,
   limit: Number(args.limit ?? 10),
+  guidance: args.guidance,
 });
 
 if (events.length === 0) {

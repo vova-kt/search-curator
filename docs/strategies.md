@@ -38,8 +38,8 @@ export function fuzzyTitle({ threshold = 0.85 } = {}) {
 
 Live in `src/strategies/queryExpansion/`.
 
-- **`templates()`** — deterministic, zero-LLM. Returns the four classic phrasings: `"<category> events in <city>"`, `"upcoming <category> <city>"`, `"<category> schedule <city>"`, `"live <category> <city> this month"`. Cheap, safe fallback, useful in tests.
-- **`llmExpand({ limit } = {})`** — opt-in by default. One LLM call (`expandQueriesPrompt`) produces a diverse list mixing synonyms / register, local-language variants, and timeframe-specific phrasings derived from the resolved `from`–`to` window. `limit` defaults to `ctx.config.queryExpansion.defaultLimit` (8). Results are persisted in storage KV under key `qx:llmExpand:v1|<city>|<category>|<from>|<to>` so the same `(city, category, timeframe)` triple skips the LLM on repeat. The `:v1` suffix lets us bust the cache by bumping the version when the prompt materially changes.
+- **`templates()`** — deterministic, zero-LLM. Returns four phrasings of the user's freeform `queryText`: `"<queryText> events in <city>"`, `"upcoming <queryText> <city>"`, `"<queryText> schedule <city>"`, `"<queryText> <city> this month"`. Cheap, safe fallback, useful in tests.
+- **`llmExpand({ limit } = {})`** — opt-in by default. One LLM call (`expandQueriesPrompt`) takes the user's freeform `queryText` and produces a diverse list mixing synonyms / sub-genres, local-language variants, and timeframe-specific phrasings derived from the resolved `from`–`to` window. `limit` defaults to `ctx.config.queryExpansion.defaultLimit` (8). Results are persisted in storage KV under key `qx:llmExpand:v2|<city>|<queryText>|<from>|<to>` so the same `(city, queryText, timeframe)` triple skips the LLM on repeat. The `:v2` suffix lets us bust the cache by bumping the version when the prompt or key shape materially changes.
 
   Failure semantics:
   - In `config.dev` mode, the underlying error (network, malformed JSON, no `queries` field, empty result) is re-thrown.
@@ -74,8 +74,8 @@ There is intentionally no LLM-based filter strategy. Soft preference filtering h
 Live in `src/strategies/rank/`.
 
 - **`byDate`** — chronological, soonest first. Always safe as a fallback.
-- **`llmRank`** — combined filter + rank in one LLM call. Sends the (post-rules) list to the LLM with the `rankByPreference` prompt, along with the user's liked / disliked examples, `derivedTraits`, and any `Query.rankGuidance` free-text. The model is instructed to omit poor matches (that is the filter signal) and return the kept events ordered by likely interest, each annotated with an ~5-word `rationale` exposed on `Event.rationale`.
-  - Skipped when there are no liked/disliked examples, no `derivedTraits`, and no `rankGuidance` — there's nothing for the model to act on.
+- **`llmRank`** — combined filter + rank in one LLM call. Sends the (post-rules) list to the LLM with the `rankByPreference` prompt, along with the user's liked / disliked examples, `derivedTraits`, and any `Query.guidance` natural-language free-text. The `guidance` field carries both filter intent (which events to omit) and rank intent (how to order what remains). The model is instructed to omit poor matches and return the kept events ordered by likely interest, each annotated with an ~5-word `rationale` exposed on `Event.rationale`.
+  - Skipped when there are no liked/disliked examples, no `derivedTraits`, and no `guidance` — there's nothing for the model to act on.
   - Safety net: if the response is empty/malformed, falls back to the input list in original order rather than collapsing the result set to nothing.
 
 Last strategy wins the final order. Truncation to `query.limit` happens in the pipeline after ranking.

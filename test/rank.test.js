@@ -10,7 +10,7 @@ import { makeEvent, stubLLM } from './_helpers.js';
 function ctx(extra = {}) {
   return /** @type {any} */ ({
     preference: { liked: [], disliked: [], explicitFilters: {} },
-    query: { city: 'Berlin', category: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' } },
+    query: { city: 'Berlin', queryText: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' } },
     config: {},
     ...extra,
   });
@@ -26,7 +26,7 @@ test('llmRank: skips the LLM when there is no preference signal and no guidance'
   assert.deepEqual(out.map((e) => e.id), [a.id, b.id]);
 });
 
-test('llmRank: rankGuidance alone triggers the LLM and drops omitted events', async () => {
+test('llmRank: guidance alone triggers the LLM and drops omitted events', async () => {
   const a = makeEvent({ title: 'A' });
   const b = makeEvent({ title: 'B', source: { name: 's', url: 'https://b.example.com' } });
   const c = makeEvent({ title: 'C', source: { name: 's', url: 'https://c.example.com' } });
@@ -41,8 +41,8 @@ test('llmRank: rankGuidance alone triggers the LLM and drops omitted events', as
     };
   });
   const out = await llmRank([a, b, c], ctx({ llm, query: {
-    city: 'Berlin', category: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' },
-    rankGuidance: 'prefer intimate venues',
+    city: 'Berlin', queryText: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' },
+    guidance: 'prefer intimate venues',
   } }));
   assert.deepEqual(out.map((e) => e.id), [c.id, a.id]);
   assert.equal(out[0].rationale, 'fits guidance well today');
@@ -55,7 +55,7 @@ test('llmRank: empty/invalid response falls back to all events in original order
   const llm = stubLLM(() => ({ ranked: [] }));
   const out = await llmRank([a, b], ctx({
     llm,
-    query: { city: 'Berlin', category: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' }, rankGuidance: 'x' },
+    query: { city: 'Berlin', queryText: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' }, guidance: 'x' },
   }));
   assert.deepEqual(out.map((e) => e.id), [a.id, b.id]);
 });

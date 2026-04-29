@@ -10,7 +10,7 @@ import { buildSystem } from './_system.js';
 /**
  * @typedef {Object} ExtractEventsArgs
  * @property {string} city
- * @property {string} category
+ * @property {string} queryText
  * @property {{ from: string, to: string }} timeframe
  * @property {ExtractPage[]} pages
  */
@@ -28,7 +28,7 @@ import { buildSystem } from './_system.js';
  * @param {ExtractEventsArgs} args
  * @returns {{ system: string, user: string }}
  */
-export function extractEventsPrompt({ city, category, timeframe, pages }) {
+export function extractEventsPrompt({ city, queryText, timeframe, pages }) {
   const system = buildSystem({
     role: 'You extract structured upcoming events from web content.',
     task: [
@@ -39,7 +39,7 @@ export function extractEventsPrompt({ city, category, timeframe, pages }) {
     rules: [
       '- Return only events whose startsAt is within the user\'s Timeframe.',
       '- Return only events in or near the user\'s City.',
-      '- Treat the user\'s Category as the topic focus: prefer events that fit it; skip clearly unrelated events.',
+      '- Treat the user\'s Query as the topic focus: prefer events that fit it; skip clearly unrelated events.',
       '- Omit any event you cannot date precisely (no "TBD", no "soon").',
       '- Skip past events, generic listings, and content that is not an event.',
       '- Do not invent details. Leave fields out rather than guess.',
@@ -54,7 +54,7 @@ export function extractEventsPrompt({ city, category, timeframe, pages }) {
       '       <content>raw page text</content>',
       '  2. A <query> block with the user\'s preferences:',
       '       <city>...</city>',
-      '       <category>...</category>',
+      '       <text>user\'s freeform query</text>',
       '       <timeframe from="ISO" to="ISO" />',
     ].join('\n'),
     outputFormat: [
@@ -65,7 +65,6 @@ export function extractEventsPrompt({ city, category, timeframe, pages }) {
       '    "startsAt": ISO 8601 datetime string,',
       '    "endsAt": ISO 8601 datetime string?,',
       '    "venue": { "name": string, "address": string?, "city": string, "country": string? },',
-      '    "category": string,',
       '    "subcategories": string[]?,',
       '    "source": { "name": string, "url": string },',
       '    "price": { "currency": string?, "min": number?, "max": number?, "free": boolean? }?',
@@ -95,7 +94,7 @@ export function extractEventsPrompt({ city, category, timeframe, pages }) {
     '',
     '<query>',
     `  <city>${city}</city>`,
-    `  <category>${category}</category>`,
+    `  <text>${queryText}</text>`,
     `  <timeframe from="${timeframe.from}" to="${timeframe.to}" />`,
     '</query>',
   ].join('\n');

@@ -30,7 +30,7 @@ The full structure (XML-tagged sections, ordering, the long-input exception, mod
 | ------------------------------------- | ----------------------------------------------------------- |
 | `src/prompts/extractEvents.js`        | Convert web content into structured `Event` objects         |
 | `src/prompts/dedupeJudge.js`          | Decide whether two near-duplicate events are the same       |
-| `src/prompts/rankByPreference.js`     | Combined filter + rank: drop poor matches, order kept events by likely interest, attach a ~5-word rationale. Honors `rankGuidance` if present on the query. |
+| `src/prompts/rankByPreference.js`     | Combined filter + rank: drop poor matches, order kept events by likely interest, attach a ~5-word rationale. Honors `guidance` if present on the query (covers both filter and rank). |
 | `src/prompts/derivePreferenceTraits.js` | Summarize liked/disliked events into a short trait string |
 | `src/prompts/expandQueries.js`        | Produce diverse web-search queries for the discover stage   |
 

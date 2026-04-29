@@ -17,7 +17,7 @@ function makeCtx({ queryExpansion, search }) {
     config: mergeConfig(DEFAULTS, {}),
     query: {
       city: 'Berlin',
-      category: 'comedy',
+      queryText: 'comedy',
       timeframe: { from: '2026-05-01', to: '2026-05-15' },
     },
     preference: { liked: [], disliked: [], explicitFilters: {} },

@@ -19,7 +19,6 @@ test('createCurator: full pipeline returns events from stub adapters', async () 
             title: 'Test Comedy Night',
             startsAt: '2026-05-02T20:00:00+00:00',
             venue: { name: 'Test Café', city: 'Berlin' },
-            category: 'comedy',
             source: { name: 'stub', url: 'https://example.com/listing' },
           },
         ],
@@ -39,7 +38,7 @@ test('createCurator: full pipeline returns events from stub adapters', async () 
   const curator = await createCurator({ llm, search: [search], storage, strategies: deterministicExpansion });
   const { events } = await curator.curate({
     city: 'Berlin',
-    category: 'comedy',
+    queryText: 'comedy',
     timeframe: { rolling: { days: 14 } },
     limit: 5,
   });
@@ -58,7 +57,6 @@ test('createCurator: cross-session dedupe via storage', async () => {
           title: 'Same Event Twice',
           startsAt: '2026-05-02T20:00:00+00:00',
           venue: { name: 'Café', city: 'Berlin' },
-          category: 'comedy',
           source: { name: 'stub', url: 'https://x.example.com' },
         },
       ],
@@ -70,14 +68,14 @@ test('createCurator: cross-session dedupe via storage', async () => {
 
   const first = await curator.curate({
     city: 'Berlin',
-    category: 'comedy',
+    queryText: 'comedy',
     timeframe: { rolling: { days: 14 } },
   });
   assert.equal(first.events.length, 1);
 
   const second = await curator.curate({
     city: 'Berlin',
-    category: 'comedy',
+    queryText: 'comedy',
     timeframe: { rolling: { days: 14 } },
   });
   // Same event id: cross-session dedupe should drop it.
@@ -106,7 +104,7 @@ test('createCurator: recordFeedback persists likes scoped by query', async () =>
     if (req.system.includes('extract structured upcoming events')) {
       return {
         events: [
-          { title: 'A', startsAt: '2026-05-02T20:00:00+00:00', venue: { name: 'V', city: 'Berlin' }, category: 'comedy', source: { name: 'stub', url: 'https://x.example.com' } },
+          { title: 'A', startsAt: '2026-05-02T20:00:00+00:00', venue: { name: 'V', city: 'Berlin' }, source: { name: 'stub', url: 'https://x.example.com' } },
         ],
       };
     }
@@ -119,10 +117,10 @@ test('createCurator: recordFeedback persists likes scoped by query', async () =>
   const storage = memory();
   const curator = await createCurator({ llm, search: [search], storage, strategies: deterministicExpansion, config: { preferences: { traitsRefreshThreshold: 1, deriveTraits: true } } });
 
-  const { events } = await curator.curate({ city: 'Berlin', category: 'comedy', timeframe: { rolling: { days: 14 } } });
+  const { events } = await curator.curate({ city: 'Berlin', queryText: 'comedy', timeframe: { rolling: { days: 14 } } });
   await curator.recordFeedback({ liked: [events[0].id], disliked: [] });
 
-  const pref = await storage.getPreference({ city: 'Berlin', category: 'comedy' });
+  const pref = await storage.getPreference({ city: 'Berlin', queryText: 'comedy' });
   assert.equal(pref.liked.length, 1);
   assert.equal(pref.liked[0].id, events[0].id);
   await curator.close();
