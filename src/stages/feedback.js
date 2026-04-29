@@ -32,28 +32,32 @@ export async function recordFeedback(input, ctx) {
   if (input.state !== EventState.LIKED && input.state !== EventState.DISLIKED) return;
   if (!ctx.config.preferences.deriveTraits) return;
 
+  const sq = await ctx.storage.getSavedQuery(input.ref);
+  if (!sq) return;
+
   const states = await ctx.storage.getEventStates(input.ref);
   const liked = states.filter((s) => s.state === EventState.LIKED);
   const disliked = states.filter((s) => s.state === EventState.DISLIKED);
   const total = liked.length + disliked.length;
   if (total < ctx.config.preferences.traitsRefreshThreshold) return;
 
-  const traits = await deriveTraits(liked, disliked, ctx);
+  const traits = await deriveTraits(sq, liked, disliked, ctx);
   if (!traits) return;
 
-  const sq = await ctx.storage.getSavedQuery(input.ref);
-  if (!sq) return;
   await ctx.storage.upsertSavedQuery({ ...sq, derivedTraits: traits });
 }
 
 /**
+ * @param {import('../core/types.js').SavedQuery} sq
  * @param {import('../core/types.js').EventStateRecord[]} liked
  * @param {import('../core/types.js').EventStateRecord[]} disliked
  * @param {import('../core/types.js').Ctx} ctx
  * @returns {Promise<string | undefined>}
  */
-async function deriveTraits(liked, disliked, ctx) {
+async function deriveTraits(sq, liked, disliked, ctx) {
   const prompt = derivePreferenceTraitsPrompt({
+    queryText: sq.queryText,
+    ...(sq.guidance ? { guidance: sq.guidance } : {}),
     liked: liked.map((l) => ({
       title: l.event.title,
       venue: { name: l.event.venue.name, city: l.event.venue.city },
