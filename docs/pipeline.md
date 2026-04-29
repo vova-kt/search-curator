@@ -27,10 +27,11 @@ Stages are pure with respect to `ctx` (they don't mutate it). They may emit even
 
 **In**: `ctx.query` → **Out**: `SearchHit[]` (treated as `events` with stub fields)
 
-Composes search queries by running every strategy in `ctx.strategies.queryExpansion` (see [strategies.md](strategies.md)), lower-cases + trims for case-insensitive dedup, then fans the union out across `ctx.search` adapters. Returns deduplicated `SearchHit { url, title, snippet, source }`.
+Composes search queries by running every strategy in `ctx.strategies.queryExpansion` (see [strategies.md](strategies.md)) **concurrently** (`Promise.allSettled`), lower-cases + trims for case-insensitive dedup, then fans the union out across `ctx.search` adapters **in parallel** — every `(adapter, query)` pair is dispatched at once via `Promise.all`. Returns deduplicated `SearchHit { url, title, snippet, source }`. Progress ticks fire as each call settles, so `current` reflects completions, not dispatch order.
 
 Errors:
-- A single failing query-expansion strategy is warned about and skipped.
+- A single failing query-expansion strategy is warned about and skipped (the rejected entry is filtered out of the `allSettled` results).
+- A single failing `(adapter, query)` search is caught inside the per-task IIFE and contributes an empty hit list, so the rest of the fan-out is unaffected.
 - An empty `queryExpansion` array is a misconfiguration — `discover` throws.
 
 ### 2. extract (`src/stages/extract.js`)

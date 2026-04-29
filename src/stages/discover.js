@@ -20,27 +20,30 @@ export async function discover(ctx) {
   const total = ctx.search.length * queries.length;
   emit({ stage: ProgressStage.SEARCH, phase: ProgressPhase.START, total });
 
-  /** @type {import('../core/types.js').SearchHit[]} */
-  const all = [];
   let current = 0;
+  /** @type {Promise<import('../core/types.js').SearchHit[]>[]} */
+  const tasks = [];
   for (const adapter of ctx.search) {
     for (const q of queries) {
-      try {
-        const hits = await adapter.search(q, {
-          maxResults: ctx.config.search.maxResultsPerAdapter,
-          signal: ctx.signal,
-        });
-        all.push(...hits);
-      } catch (err) {
-        // One adapter or query failing should not kill discovery.
-        // Surface via console so the operator notices.
-        // eslint-disable-next-line no-console
-        console.warn(`[discover] ${adapter.name} failed for "${q}":`, err instanceof Error ? err.message : err);
-      }
-      current++;
-      emit({ stage: ProgressStage.SEARCH, phase: ProgressPhase.TICK, current, total, note: adapter.name });
+      tasks.push((async () => {
+        try {
+          return await adapter.search(q, {
+            maxResults: ctx.config.search.maxResultsPerAdapter,
+            signal: ctx.signal,
+          });
+        } catch (err) {
+          // One adapter or query failing should not kill discovery.
+          // eslint-disable-next-line no-console
+          console.warn(`[discover] ${adapter.name} failed for "${q}":`, err instanceof Error ? err.message : err);
+          return [];
+        } finally {
+          current++;
+          emit({ stage: ProgressStage.SEARCH, phase: ProgressPhase.TICK, current, total, note: adapter.name });
+        }
+      })());
     }
   }
+  const all = (await Promise.all(tasks)).flat();
   const deduped = dedupeByUrl(all);
   emit({ stage: ProgressStage.SEARCH, phase: ProgressPhase.DONE, count: deduped.length });
   return deduped;
@@ -55,19 +58,17 @@ async function buildQueries(ctx) {
   if (!strategies || strategies.length === 0) {
     throw new Error('discover: no queryExpansion strategies configured');
   }
+  const settled = await Promise.allSettled(strategies.map(async (s) => s(ctx)));
   /** @type {Map<string, string>} */
   const seen = new Map();
-  for (const strat of strategies) {
-    let produced;
-    try {
-      produced = await strat(ctx);
-    } catch (err) {
+  for (const r of settled) {
+    if (r.status === 'rejected') {
       // Mirrors the per-adapter error policy: a single strategy failure should not kill discovery.
       // eslint-disable-next-line no-console
-      console.warn('[discover] queryExpansion strategy failed:', err instanceof Error ? err.message : err);
+      console.warn('[discover] queryExpansion strategy failed:', r.reason instanceof Error ? r.reason.message : r.reason);
       continue;
     }
-    for (const q of produced ?? []) {
+    for (const q of r.value ?? []) {
       const key = q.trim().toLowerCase();
       if (!key || seen.has(key)) continue;
       seen.set(key, q.trim());
