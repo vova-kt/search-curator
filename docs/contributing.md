@@ -43,3 +43,7 @@ The lib is pre-`1.0`. Rename, restructure, drop fields, change return shapes whe
 - `node --test` driven, files under `test/`.
 - `adapters/storage/memory.js` for any test that needs storage; never hit a real SQLite file in tests.
 - LLM and search calls are stubbed via fake adapters (`{ name: 'stub', chat/search: async () => ... }`).
+
+## Eval
+
+Tests don't hit real APIs. For "did this prompt change actually make extraction (or ranking) better?", use the manual eval pipelines under [eval/](../eval/) — they live outside the `test/**` glob, hit the real LLM, and produce a metrics report. See [eval.md](eval.md).

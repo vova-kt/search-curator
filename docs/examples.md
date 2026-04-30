@@ -1,6 +1,6 @@
 # Examples
 
-Two runnable entry points under `examples/`. Both wire up the curator with default adapters and read keys from env.
+Two runnable entry points: a one-shot script under `examples/` and the interactive TUI under `app/tui/` (sibling to future front-ends like a web app). Both wire up the curator with default adapters and read keys from env.
 
 Env-var bindings (API keys, DB path) are documented in [env.md](env.md). Runtime tunables live in [src/core/config.js](../src/core/config.js).
 
@@ -38,11 +38,11 @@ Use case: smoke testing, regression checks, quick demos.
 
 ## TUI — interactive
 
-`examples/tui/` is an [ink](https://github.com/vadimdemedes/ink)-based TUI exercising the full feedback loop. Run it via:
+`app/tui/` is an [ink](https://github.com/vadimdemedes/ink)-based TUI exercising the full feedback loop. It lives under `app/` (alongside future front-ends such as a web app) rather than `examples/` because it is the primary interactive client. Run it via:
 
 ```bash
-npm run example:cli   # alias for: tsx examples/tui/index.jsx
-node examples/tui/index.jsx --dry   # offline, stub adapters, in-memory storage
+npm run example:cli   # alias for: tsx app/tui/index.jsx
+node app/tui/index.jsx --dry   # offline, stub adapters, in-memory storage
 ```
 
 ### Key handling
@@ -69,12 +69,12 @@ Back navigation is consistent across screens that have a "back" notion: `b` and 
 
 Input handling is a declarative keymap, not per-screen `useInput` switches. Four files split by concern:
 
-- [examples/tui/keys.js](../examples/tui/keys.js) — `Key` enum of special-key descriptors (each `{ id, label, match(input, key) }`) plus a `char(c)` factory for character keys.
-- [examples/tui/actions.js](../examples/tui/actions.js) — `Action` enum, the closed set of semantic verbs screens dispatch on (`BACK`, `MOVE_UP`, `TOGGLE_LIKE`, …). Per CLAUDE.md rule #4, screens import these instead of inlining string literals.
-- [examples/tui/bindings.js](../examples/tui/bindings.js) — reusable cross-screen *key sets* (`BACK_KEYS`, `LIST_UP_KEYS`, `LIST_DOWN_KEYS`, `LIKE_KEYS`, `DISLIKE_KEYS`). Plain frozen arrays of key descriptors — action and `when` stay at the call site so handlers can reference local state.
-- [examples/tui/useKeymap.js](../examples/tui/useKeymap.js) — generic `useKeymap(bindings, handlers)` hook. `bindings` is `[{ keys, action, when? }]` evaluated per-render; the first match whose `when` isn't `false` fires its handler. Shared backbone replacing the old per-screen `if/else if` ladders.
+- [app/tui/keys.js](../app/tui/keys.js) — `Key` enum of special-key descriptors (each `{ id, label, match(input, key) }`) plus a `char(c)` factory for character keys.
+- [app/tui/actions.js](../app/tui/actions.js) — `Action` enum, the closed set of semantic verbs screens dispatch on (`BACK`, `MOVE_UP`, `TOGGLE_LIKE`, …). Per CLAUDE.md rule #4, screens import these instead of inlining string literals.
+- [app/tui/bindings.js](../app/tui/bindings.js) — reusable cross-screen *key sets* (`BACK_KEYS`, `LIST_UP_KEYS`, `LIST_DOWN_KEYS`, `LIKE_KEYS`, `DISLIKE_KEYS`). Plain frozen arrays of key descriptors — action and `when` stay at the call site so handlers can reference local state.
+- [app/tui/useKeymap.js](../app/tui/useKeymap.js) — generic `useKeymap(bindings, handlers)` hook. `bindings` is `[{ keys, action, when? }]` evaluated per-render; the first match whose `when` isn't `false` fires its handler. Shared backbone replacing the old per-screen `if/else if` ladders.
 
-To add a key: add one row to the screen's binding table (and a verb to `actions.js` if no existing one fits). To keep a key consistent across screens, define or reuse a fragment in `bindings.js` rather than re-listing descriptors. App-level chords like `ctrl-c` (in [App.jsx](../examples/tui/App.jsx)) still use raw `useInput` since they're a single global escape hatch.
+To add a key: add one row to the screen's binding table (and a verb to `actions.js` if no existing one fits). To keep a key consistent across screens, define or reuse a fragment in `bindings.js` rather than re-listing descriptors. App-level chords like `ctrl-c` (in [App.jsx](../app/tui/App.jsx)) still use raw `useInput` since they're a single global escape hatch.
 
 The TUI configures rank as `[rules, llmRank]` — `rules` cheaply drops events excluded by `excludeKeywords` / `excludeVenues` / price bounds, then `llmRank` runs as a combined filter + rank LLM pass that further drops poor matches against the user's likes/dislikes and the natural-language `guidance`, attaching the rationale.
 

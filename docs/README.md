@@ -11,4 +11,5 @@ Concept-by-concept reference. Read the page that matches your task before editin
 - [preferences.md](preferences.md) — preference shape, scoping, capture, clearing
 - [examples.md](examples.md) — running the script and CLI
 - [env.md](env.md) — env-var bindings for API keys and DB path
+- [eval.md](eval.md) — manual-only LLM eval pipelines for prompts and strategies
 - [contributing.md](contributing.md) — rules and workflow

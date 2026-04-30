@@ -8,7 +8,8 @@ A curator is a **pipeline** wrapping three pluggable I/O adapters (search, LLM, 
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│ examples/        examples/script.js, examples/tui/     │
+│ front-ends       app/tui/  (web app planned)           │
+│ examples         examples/script.js                    │
 ├────────────────────────────────────────────────────────┤
 │ public API       src/index.js  →  createCurator()      │
 ├────────────────────────────────────────────────────────┤

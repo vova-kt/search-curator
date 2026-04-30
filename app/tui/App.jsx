@@ -6,7 +6,7 @@ import { memory } from '../../src/adapters/storage/memory.js';
 import { openai } from '../../src/adapters/llm/openai.js';
 import { tavily } from '../../src/adapters/search/tavily.js';
 import { ProgressPhase } from '../../src/core/progress.js';
-import { stubLLM, stubSearch } from '../_stubs.js';
+import { stubLLM, stubSearch } from '../../examples/_stubs.js';
 import { resolveKeys, saveStored, loadStored, configPath } from './config.js';
 import { Screen } from './screens/screen.js';
 import KeysScreen from './screens/Keys.jsx';

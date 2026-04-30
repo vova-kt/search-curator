@@ -32,7 +32,7 @@
     "build:types": "tsc",
     "test": "node --test --test-reporter=spec test/**/*.test.js",
     "example:script": "node examples/script.js",
-    "example:cli": "tsx examples/tui/index.jsx"
+    "example:cli": "tsx app/tui/index.jsx"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
