@@ -16,7 +16,7 @@ import ResultsScreen, { Mode as ResultsMode } from './screens/Results.jsx';
 import DetailsScreen from './screens/Details.jsx';
 import ProgressScreen from './screens/Progress.jsx';
 
-export default function App({ dry }) {
+export default function App({ dry, logFile }) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const [rows, setRows] = useState(stdout.rows ?? 24);
@@ -94,7 +94,7 @@ export default function App({ dry }) {
     // The TUI opts into LLM rank so saved-query guidance and 5-word
     // rationales actually flow through. `rules` runs first to apply hard
     // exclude filters before the LLM ranker sees the list.
-    const c = await createCurator({ llm, search, storage, strategies: { rank: [rules, llmRank] } });
+    const c = await createCurator({ llm, search, storage, strategies: { rank: [rules, llmRank] }, config: { logging: { file: logFile } } });
     setCurator(c);
     await refreshSaved(c);
     setScreen(Screen.SAVED_LIST);

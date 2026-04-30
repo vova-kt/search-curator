@@ -12,6 +12,9 @@ import App from './App.jsx';
 
 const dry = process.argv.includes('--dry');
 
+// One timestamped log file per invocation — new file on each app start.
+const logFile = `./curator-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.log`;
+
 const ENTER_ALT = '\x1b[?1049h';
 const LEAVE_ALT = '\x1b[?1049l';
 const HIDE_CURSOR = '\x1b[?25l';
@@ -32,7 +35,7 @@ process.on('exit', restore);
 process.on('SIGINT', () => { restore(); process.exit(130); });
 process.on('SIGTERM', () => { restore(); process.exit(143); });
 
-const { waitUntilExit } = render(<App dry={dry} />, { exitOnCtrlC: false });
+const { waitUntilExit } = render(<App dry={dry} logFile={logFile} />, { exitOnCtrlC: false });
 
 waitUntilExit().then(restore, (err) => {
   restore();
