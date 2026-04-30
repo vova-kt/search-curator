@@ -28,6 +28,7 @@ The `docs/` directory is the canonical reference. Read the page that matches you
 - [docs/preferences.md](docs/preferences.md) — preference shape, like/dislike capture, scoped clearing
 - [docs/examples.md](docs/examples.md) — running the script and CLI examples
 - [docs/env.md](docs/env.md) — env-var bindings for API keys and DB path
+- [docs/eval.md](docs/eval.md) — manual-only LLM eval pipelines (extract today, rank next) for prompt iteration
 - [docs/contributing.md](docs/contributing.md) — the three rules above, restated for humans, plus dev workflow
 
 ## Quick orientation
