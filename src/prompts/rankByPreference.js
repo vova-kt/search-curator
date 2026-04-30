@@ -19,7 +19,7 @@ import { buildSystem } from './_system.js';
  * or guidance — omission is the filter signal — and to return the kept events
  * ordered by likely interest with a brief rationale.
  *
- * Structure follows docs/prompts_guide.md.
+ * Structure follows docs/prompts.md.
  *
  * @param {RankByPreferenceArgs} args
  * @returns {{ system: string, user: string }}

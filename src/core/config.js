@@ -29,7 +29,7 @@ export const DEFAULTS = Object.freeze({
    * Defaults for LLM adapter calls. The adapter is pluggable; these are the
    * values handed to whichever adapter is wired in unless the caller overrides
    * them per-call. Prompts under `src/prompts/` must work across all supported
-   * model families — see [docs/prompts_guide.md](../../docs/prompts_guide.md).
+   * model families — see [docs/prompts.md](../../docs/prompts.md).
    */
   llm: {
     /** Default model id passed to the adapter (e.g. an OpenAI / Anthropic model id). */

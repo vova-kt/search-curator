@@ -9,7 +9,7 @@ import { buildSystem } from './_system.js';
  * Ask the LLM to merge near-duplicate events.
  * Returns groups of ids that refer to the same real-world event.
  *
- * Structure follows docs/prompts_guide.md.
+ * Structure follows docs/prompts.md.
  *
  * @param {DedupeJudgeArgs} args
  * @returns {{ system: string, user: string }}

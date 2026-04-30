@@ -1,6 +1,6 @@
 /**
  * Build a `system` prompt string from the six standard sections defined in
- * docs/prompts_guide.md. The helper enforces section order and XML wrapping
+ * docs/prompts.md. The helper enforces section order and XML wrapping
  * so individual prompts only have to supply each section's body.
  *
  * Every section is optional. Falsy / empty bodies are skipped. Sections are

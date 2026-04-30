@@ -13,7 +13,7 @@ import { buildSystem } from './_system.js';
  * Summarize liked / disliked examples into a one-line trait string used as
  * cheaper few-shot context for filter / rank prompts.
  *
- * Structure follows docs/prompts_guide.md.
+ * Structure follows docs/prompts.md.
  *
  * @param {DerivePreferenceTraitsArgs} args
  * @returns {{ system: string, user: string }}

@@ -11,7 +11,7 @@ import { buildSystem } from './_system.js';
 /**
  * Build the query-expansion prompt. The LLM returns a JSON object with `queries: string[]`.
  *
- * Structure follows docs/prompts_guide.md.
+ * Structure follows docs/prompts.md.
  *
  * @param {ExpandQueriesArgs} args
  * @returns {{ system: string, user: string }}

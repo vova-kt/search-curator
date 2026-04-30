@@ -22,7 +22,7 @@ import { buildSystem } from './_system.js';
  * extracted from.
  *
  * Page text can be large, so this prompt applies the long-input exception
- * documented in docs/prompts_guide.md: the bulk `<pages>` block sits at the
+ * documented in docs/prompts.md: the bulk `<pages>` block sits at the
  * top of the user message, with the short query recap at the bottom.
  *
  * @param {ExtractEventsArgs} args

@@ -8,35 +8,26 @@ Manual-only pipelines for evaluating LLM-driven stages (extract today, rank next
 - When iterating on the prompt itself: rerun on the same fixture, compare reports, decide.
 - Never on every commit, never in CI. The eval makes paid LLM calls.
 
-## What the eval is and isn't
+## What it is and isn't
 
 - **Is**: a stable lens for comparing prompt variants against the same inputs. The *human* reads the metric report and decides whether a change improved things.
-- **Isn't**: a regression test. Strict deepEqual against a golden file would churn the golden on every prompt tweak. `temperature: 0` reduces but doesn't eliminate run-to-run variance.
+- **Isn't**: a regression test. A `deepEqual` against a golden file would churn the golden on every prompt tweak. `temperature: 0` reduces but doesn't eliminate run-to-run variance, and the model itself drifts as vendors update.
 
 ## Layout
 
 ```
 eval/
-  core/        # reusable across eval kinds
-    slug.js          # fixture key from (queryText, city, days, fromDate)
-    fixtures.js      # load/save .search.json and .golden.json
-    runs.js          # writes per-invocation run records to eval/runs/
-    matching.js      # title/date/venue match primitives
-    metrics.js       # matchEvents, precisionRecall, fieldAccuracy, hallucinationSignal
-    report.js        # stdout report rendering
-    ctx.js           # buildExtractCtx — minimal Ctx for direct stage calls
-    cli.js           # tiny argv parser
-  scripts/     # CLIs
-    fetch-search.js     # adapter -> .search.json
-    run-extract.js      # .search.json + .golden.json -> report
-    promote-golden.js   # reviewed run -> .golden.json
+  core/        # reusable across eval kinds (slugs, fixtures, runs, matching, metrics, report, ctx, cli)
+  scripts/     # CLIs: fetch-search, run-extract, promote-golden
   fixtures/    # committed
   runs/        # gitignored
 ```
 
+See [eval/core/](../eval/core/) and [eval/scripts/](../eval/scripts/) for what each module does — file names track responsibilities one-to-one.
+
 ## Fixture format
 
-`<slug>.search.json` — self-describing, carries everything `run-extract.js` needs to rebuild `ctx.query`:
+`<slug>.search.json` carries everything `run-extract.js` needs to rebuild `ctx.query`:
 
 ```jsonc
 {
@@ -49,17 +40,7 @@ eval/
 }
 ```
 
-`<slug>.golden.json` — minimal hand-curated truth. Optional fields (description, endsAt, price) are treated as "not asserting":
-
-```jsonc
-{
-  "slug": "...",
-  "events": [
-    { "title": "...", "startsAt": "2026-05-12T20:00:00-04:00",
-      "venue": { "name": "...", "city": "New York" }, "source": { "url": "https://..." } }
-  ]
-}
-```
+`<slug>.golden.json` is minimal hand-curated truth; optional fields (description, endsAt, price) are treated as "not asserting." See files under [eval/fixtures/](../eval/fixtures/) for working examples — the JSON shape itself is what's stable, so a fresh fixture is the canonical reference.
 
 ## Workflow
 
@@ -71,8 +52,8 @@ TAVILY_API_KEY=... node eval/scripts/fetch-search.js \
 # 2. Run extraction.
 OPENAI_API_KEY=... node eval/scripts/run-extract.js --fixture <slug>
 
-# 3. First time: hand-curate the run JSON into a golden file, save as
-#    eval/fixtures/<slug>.golden.json, commit. Subsequent runs compare against it.
+# 3. First time: hand-curate the run JSON into eval/fixtures/<slug>.golden.json,
+#    commit. Subsequent runs compare against it.
 
 # 4. Iterate on src/prompts/extractEvents.js, rerun step 2.
 
@@ -80,18 +61,18 @@ OPENAI_API_KEY=... node eval/scripts/run-extract.js --fixture <slug>
 node eval/scripts/promote-golden.js --fixture <slug>
 ```
 
-## Metrics
+## What the metrics measure (and don't)
 
-Defined in [eval/core/metrics.js](../eval/core/metrics.js). Field comparators in [eval/core/matching.js](../eval/core/matching.js).
+Defined in [eval/core/metrics.js](../eval/core/metrics.js); field comparators in [eval/core/matching.js](../eval/core/matching.js).
 
 - **Coverage / recall**: golden events matched in the candidate set, by title Jaccard ≥ 0.5.
 - **Precision**: candidate events that match a golden event.
 - **Field accuracy on matched pairs**: date within ±1 calendar day; venue name normalized substring match. Computed only over matched pairs — doesn't penalize the extractor for missing events; that's recall's job.
-- **Hallucination signal**: candidate titles whose tokens don't appear in any source page. Soft signal, *not* part of precision/recall — false positives are common when the LLM rephrases a title.
+- **Hallucination signal**: candidate titles whose tokens don't appear in any source page. **Soft signal** — false positives are common when the LLM rephrases a title, so this is reported separately, not folded into precision.
 
 ## Why the eval calls `extract()` directly
 
-`extract(hits, ctx)` ([src/stages/extract.js](../src/stages/extract.js)) is decoupled from discover/dedupe/rank/storage. The eval builds a minimal `Ctx` (`{ llm, config, logger, query }`) via [eval/core/ctx.js](../eval/core/ctx.js) and calls the function directly. No need for the stub-everything pattern from `test/pipeline_e2e.test.js`.
+`extract(hits, ctx)` ([src/stages/extract.js](../src/stages/extract.js)) is decoupled from discover/dedupe/rank/storage. The eval builds a minimal `ctx` (`{ llm, config, logger, query }`) via [eval/core/ctx.js](../eval/core/ctx.js) and calls the function directly, bypassing the orchestrator. No need for the stub-everything pattern from `test/pipeline_e2e.test.js`.
 
 ## Future: ranking eval
 
@@ -101,6 +82,6 @@ Drops into the same skeleton without restructuring:
 - `<slug>.preferences.json` — likes, dislikes, derivedTraits
 - `<slug>.golden-rank.json` — human top-K
 - `eval/scripts/run-rank.js` — calls the rank-strategy chain with the real LLM
-- `eval/core/metrics.js` grows `topKOverlap` and a rank-correlation alongside `matchEvents`
+- `eval/core/metrics.js` grows `topKOverlap` and a rank correlation alongside `matchEvents`
 
 The fixture/script/report layout, gating, slug scheme, and run-record format stay identical.
