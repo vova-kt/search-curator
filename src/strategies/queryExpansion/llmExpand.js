@@ -41,8 +41,8 @@ export function llmExpand({ limit } = {}) {
         system: prompt.system,
         messages: [{ role: 'user', content: prompt.user }],
         json: true,
-        temperature: 0.4,
-        maxTokens: 512,
+        temperature: ctx.config.queryExpansion.temperature,
+        maxTokens: ctx.config.queryExpansion.maxTokens,
         signal: ctx.signal,
       });
       const json = /** @type {{ queries?: unknown }} */ (resp.json ?? {});

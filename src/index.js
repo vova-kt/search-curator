@@ -53,7 +53,7 @@ export async function createCurator(opts) {
       llmExpand({ limit: config.queryExpansion.defaultLimit }),
       templates(),
     ],
-    dedupe: opts.strategies?.dedupe ?? [byId, fuzzyTitle({ threshold: config.dedupe.fuzzyTitleThreshold })],
+    dedupe: opts.strategies?.dedupe ?? [byId, fuzzyTitle(config.dedupe.fuzzyTitleThreshold)],
     rank:   opts.strategies?.rank   ?? [rules, byDate],
   };
 

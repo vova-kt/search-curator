@@ -6,10 +6,10 @@
 import { normalize } from '../../core/identity.js';
 
 /**
- * @param {{ threshold?: number }} [opts]
+ * @param {number} threshold
  * @returns {import('../../core/types.js').Strategy}
  */
-export function fuzzyTitle({ threshold = 0.85 } = {}) {
+export function fuzzyTitle(threshold) {
   return function fuzzyTitleStrategy(events) {
     /** @type {import('../../core/types.js').Event[]} */
     const kept = [];

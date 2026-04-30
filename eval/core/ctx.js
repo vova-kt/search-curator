@@ -50,3 +50,31 @@ export function buildExtractCtx({ query, model, apiKey, temperature = 0, logLeve
     query,
   };
 }
+
+/**
+ * Build a minimal `Ctx` for invoking query-expansion strategies from an eval
+ * script. A null storage is always wired so `llmExpand` cache misses silently
+ * skip caching — eval fixtures are re-fetched manually when stale. Pass
+ * `{ apiKey, model }` to enable `llmExpand`; omit them for `templates` which
+ * needs no LLM.
+ *
+ * @param {{
+ *   query: { city: string, queryText: string, timeframe: { from: string, to: string } },
+ *   apiKey?: string,
+ *   model?: string,
+ *   logLevel?: string,
+ * }} opts
+ */
+export function buildExpandCtx({ query, apiKey, model, logLevel }) {
+  const config = mergeConfig(DEFAULTS, {
+    ...(model ? { llm: { model } } : {}),
+    logging: { level: logLevel, file: null },
+  });
+  const logger = createLogger(logLevel, null);
+  const nullStorage = { getKV: async () => null, setKV: async () => {} };
+  const base = { config, logger, query, storage: nullStorage };
+  if (apiKey && model) {
+    return { ...base, llm: withTemperature(openai({ apiKey, model }), 0) };
+  }
+  return base;
+}

@@ -225,7 +225,7 @@
  * @property {{ model: string, temperature: number, maxTokens: number }} llm
  * @property {{ maxResultsPerAdapter: number, timeoutMs: number }} search
  * @property {{ defaultLimit: number, defaultRollingDays: number, extractConcurrency: number, extractBatchTokenCap: number, charsPerToken: number }} pipeline
- * @property {{ defaultLimit: number }} queryExpansion
+ * @property {{ defaultLimit: number, temperature: number, maxTokens: number }} queryExpansion
  * @property {{ fuzzyTitleThreshold: number }} dedupe
  * @property {{ deriveTraits: boolean, traitsRefreshThreshold: number }} preferences
  * @property {{ level: 'silent'|'error'|'warn'|'info'|'debug', file: string|null }} logging

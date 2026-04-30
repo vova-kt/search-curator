@@ -33,7 +33,7 @@ export const DEFAULTS = Object.freeze({
    */
   llm: {
     /** Default model id passed to the adapter (e.g. an OpenAI / Anthropic model id). */
-    model: 'gpt-5.5-mini',
+    model: 'gpt-5.4-mini',
     /** Sampling temperature. Low by default — prompts return JSON. */
     temperature: 0.2,
     /** Max output tokens per call. Sized for the largest extract batches. */
@@ -66,6 +66,12 @@ export const DEFAULTS = Object.freeze({
   queryExpansion: {
     /** Max queries `llmExpand` returns when no per-call limit is given. */
     defaultLimit: 8,
+    /** Sampling temperature for the expand-queries LLM call. Higher than the
+     *  global default to get phrasing variety without fully randomizing. */
+    temperature: 0.1,
+    /** Max output tokens for the expand-queries LLM call. Sized for a short
+     *  JSON list of query strings. */
+    maxTokens: 1024,
   },
 
   /** Tuning for dedupe strategies. */

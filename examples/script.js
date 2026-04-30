@@ -3,7 +3,7 @@
  * One-shot example. See docs/examples.md.
  */
 
-import { createCurator, EventState } from '../src/index.js';
+import {createCurator, DEFAULTS, EventState} from '../src/index.js';
 import { sqlite } from '../src/adapters/storage/sqlite.js';
 import { memory } from '../src/adapters/storage/memory.js';
 import { openai } from '../src/adapters/llm/openai.js';
@@ -21,7 +21,7 @@ const dry = args.dry === 'true' || args.dry === '';
 
 const llm = dry
   ? stubLLM()
-  : openai({ apiKey: requireEnv('OPENAI_API_KEY'), model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini' });
+  : openai({ apiKey: requireEnv('OPENAI_API_KEY'), model: process.env.OPENAI_MODEL ?? DEFAULTS.llm.model });
 
 const search = dry ? [stubSearch()] : [tavily({ apiKey: requireEnv('TAVILY_API_KEY') })];
 

@@ -3,12 +3,13 @@
  */
 
 import OpenAI from 'openai';
+import {DEFAULTS} from "../../core/config.js";
 
 /**
- * @param {{ apiKey: string, model?: string, baseURL?: string }} opts
+ * @param {{ apiKey: string, model: string, baseURL?: string }} opts
  * @returns {import('../../core/types.js').LLMAdapter}
  */
-export function openai({ apiKey, model = 'gpt-4o-mini', baseURL }) {
+export function openai({ apiKey, model, baseURL }) {
   const client = new OpenAI({ apiKey, baseURL });
   return {
     name: 'openai',
@@ -22,8 +23,8 @@ export function openai({ apiKey, model = 'gpt-4o-mini', baseURL }) {
       const resp = await client.chat.completions.create({
         model,
         messages,
-        temperature: req.temperature ?? 0.2,
-        max_tokens: req.maxTokens ?? 4096,
+        temperature: req.temperature ?? DEFAULTS.llm.temperature,
+        max_completion_tokens: req.maxTokens ?? DEFAULTS.llm.maxTokens,
         response_format: req.json ? { type: 'json_object' } : undefined,
       }, { signal: req.signal });
 

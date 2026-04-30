@@ -46,8 +46,11 @@ See [eval/core/](../eval/core/) and [eval/scripts/](../eval/scripts/) for what e
 
 ```sh
 # 1. Fetch fixture (once per slug; commit the result).
+#    Add --expand templates for 4 deterministic phrasings (no LLM), or
+#    --expand llm for LLM-generated variants (requires OPENAI_API_KEY).
 TAVILY_API_KEY=... node eval/scripts/fetch-search.js \
-  --query "standup comedy in russian" --city "New York" --days 90 --search tavily
+  --query "standup comedy in russian" --city "New York" --days 90 --search tavily \
+  [--expand templates|llm] [--model <id>]
 
 # 2. Run extraction.
 OPENAI_API_KEY=... node eval/scripts/run-extract.js --fixture <slug>

@@ -42,7 +42,7 @@ test('fuzzyTitle: same-day same-city near-duplicates collapse', async () => {
     venue: { name: 'Comedy Café', city: 'Berlin' },
     source: { name: 's', url: 'https://b.example.com' },
   });
-  const out = await fuzzyTitle({ threshold: 0.5 })([a, b], /** @type {any} */ ({}));
+  const out = await fuzzyTitle(0.5)([a, b], /** @type {any} */ ({}));
   assert.equal(out.length, 1);
 });
 
@@ -59,7 +59,7 @@ test('fuzzyTitle: trigrams catch punctuation/spacing variants tokens miss', asyn
     startsAt: '2026-05-02T20:30:00+00:00',
     source: { name: 's', url: 'https://b.example.com' },
   });
-  const out = await fuzzyTitle({ threshold: 0.5 })([a, b], /** @type {any} */ ({}));
+  const out = await fuzzyTitle(0.5)([a, b], /** @type {any} */ ({}));
   assert.equal(out.length, 1);
 });
 
@@ -76,7 +76,7 @@ test('fuzzyTitle: different cities on the same day are not duplicates', async ()
     venue: { name: 'Blue Note', city: 'Munich' },
     source: { name: 's', url: 'https://b.example.com' },
   });
-  const out = await fuzzyTitle({ threshold: 0.85 })([a, b], /** @type {any} */ ({}));
+  const out = await fuzzyTitle(0.85)([a, b], /** @type {any} */ ({}));
   assert.equal(out.length, 2);
 });
 
@@ -91,7 +91,7 @@ test('fuzzyTitle: unrelated titles stay distinct', async () => {
     startsAt: '2026-05-02T20:00:00+00:00',
     source: { name: 's', url: 'https://b.example.com' },
   });
-  const out = await fuzzyTitle({ threshold: 0.85 })([a, b], /** @type {any} */ ({}));
+  const out = await fuzzyTitle(0.85)([a, b], /** @type {any} */ ({}));
   assert.equal(out.length, 2);
 });
 
@@ -106,6 +106,6 @@ test('fuzzyTitle: different days are not duplicates even with same title', async
     startsAt: '2026-05-03T20:00:00+00:00',
     source: { name: 's', url: 'https://b.example.com' },
   });
-  const out = await fuzzyTitle({ threshold: 0.85 })([a, b], /** @type {any} */ ({}));
+  const out = await fuzzyTitle(0.85)([a, b], /** @type {any} */ ({}));
   assert.equal(out.length, 2);
 });
