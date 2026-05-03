@@ -35,27 +35,106 @@ import { hasMonthYearAnchor, hasBadTimeRef } from '../core/queryHeuristics.js';
 import { ratio, compose } from '../core/report.js';
 
 
-const days = 30;
-const fromDate = new Date().toISOString().slice(0, 10);
-const toDate = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
-const timeframe = { from: fromDate, to: toDate };
+/**
+ * Build a timeframe `{ from, to }` window starting `startOffsetDays` from today
+ * and lasting `windowDays`.
+ * @param {number} startOffsetDays
+ * @param {number} windowDays
+ */
+function timeframeOf(startOffsetDays, windowDays) {
+  const from = new Date(Date.now() + startOffsetDays * 86400000).toISOString().slice(0, 10);
+  const to = new Date(Date.now() + (startOffsetDays + windowDays) * 86400000).toISOString().slice(0, 10);
+  return { from, to };
+}
 
 /**
  * @typedef {{
  *   model: string,
  *   query: { queryText: string, city: string, timeframe: { from: string, to: string } },
  *   expectedLanguages: string[],   // ISO 639-3 codes the city's audience speaks
+ *   limit: number,
+ *   temperature: number,
  * }} ExpandConfig
  */
+
+const MODEL = 'gpt-5.4-mini';
+const LIMIT = 8;
+const TEMPERATURE = 0.1;
 
 /** @type {ExpandConfig[]} */
 const configs = [
   {
-    model: 'gpt-5.4-mini',
-    query: { queryText: 'russian standup', city: 'berlin', timeframe },
+    model: MODEL,
+    query: { queryText: 'russian standup', city: 'berlin', timeframe: timeframeOf(0, 30) },
     expectedLanguages: ['rus', 'deu', 'eng'],
+    limit: LIMIT,
+    temperature: TEMPERATURE,
+  },
+  {
+    model: MODEL,
+    query: { queryText: 'jazz concert', city: 'new york', timeframe: timeframeOf(0, 7) },
+    expectedLanguages: ['eng'],
+    limit: LIMIT,
+    temperature: TEMPERATURE,
+  },
+  {
+    model: MODEL,
+    query: { queryText: 'tech meetup ai', city: 'san francisco', timeframe: timeframeOf(0, 14) },
+    expectedLanguages: ['eng'],
+    limit: LIMIT,
+    temperature: TEMPERATURE,
+  },
+  {
+    model: MODEL,
+    query: { queryText: 'contemporary art exhibition', city: 'paris', timeframe: timeframeOf(7, 120) },
+    expectedLanguages: ['fra', 'eng'],
+    limit: LIMIT,
+    temperature: TEMPERATURE,
+  },
+  {
+    model: MODEL,
+    query: { queryText: 'street food festival', city: 'bangkok', timeframe: timeframeOf(0, 21) },
+    expectedLanguages: ['tha', 'eng'],
+    limit: LIMIT,
+    temperature: TEMPERATURE,
+  },
+  {
+    model: MODEL,
+    query: { queryText: 'startup pitch night', city: 'london', timeframe: timeframeOf(0, 75) },
+    expectedLanguages: ['eng'],
+    limit: LIMIT,
+    temperature: TEMPERATURE,
+  },
+  {
+    model: MODEL,
+    query: { queryText: 'marathon half-marathon', city: 'tokyo', timeframe: timeframeOf(14, 90) },
+    expectedLanguages: ['jpn', 'eng'],
+    limit: LIMIT,
+    temperature: TEMPERATURE,
+  },
+  {
+    model: MODEL,
+    query: { queryText: 'indie film screening', city: 'amsterdam', timeframe: timeframeOf(0, 14) },
+    expectedLanguages: ['nld', 'eng'],
+    limit: LIMIT,
+    temperature: TEMPERATURE,
+  },
+  {
+    model: MODEL,
+    query: { queryText: 'yoga retreat weekend', city: 'lisbon', timeframe: timeframeOf(7, 45) },
+    expectedLanguages: ['por', 'eng'],
+    limit: LIMIT,
+    temperature: TEMPERATURE,
+  },
+  {
+    model: MODEL,
+    query: { queryText: 'salsa bachata social', city: 'barcelona', timeframe: timeframeOf(0, 10) },
+    expectedLanguages: ['spa', 'cat', 'eng'],
+    limit: LIMIT,
+    temperature: TEMPERATURE,
   },
 ];
+
 
 try {
   const apiKey = requireEnv('OPENAI_API_KEY');
@@ -64,13 +143,13 @@ try {
   );
   const promptSha = gitShaOf(promptPath);
 
-  console.log(`expand eval — ${configs.length} config(s)  timeframe: ${timeframe.from}→${timeframe.to}\n`);
+  console.log(`expand eval — ${configs.length} config(s)\n`);
 
   const results = await Promise.all(configs.map((cfg) => runOne(cfg, { apiKey, promptSha })));
 
   for (const r of results) {
     console.log(`=== ${r.slug} ===`);
-    console.log(`model: ${r.config.model}  city: ${r.config.query.city}  query: "${r.config.query.queryText}"`);
+    console.log(`model: ${r.config.model}  city: ${r.config.query.city}  query: "${r.config.query.queryText}"  timeframe: ${r.config.query.timeframe.from}→${r.config.query.timeframe.to}`);
     console.log(`expanded to ${r.queries.length} queries in ${(r.elapsedMs / 1000).toFixed(1)}s`);
     console.log('\n' + r.report.text + '\n');
     console.log(`run saved: ${r.runPath}`);
@@ -106,6 +185,8 @@ async function runOne(config, { apiKey, promptSha }) {
     query: config.query,
     apiKey,
     model: config.model,
+    limit: config.limit,
+    temperature: config.temperature,
   });
   const queries = await llmExpand()(ctx);
   const elapsedMs = Date.now() - start;

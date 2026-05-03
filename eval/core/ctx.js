@@ -56,18 +56,24 @@ export function buildExtractCtx({ query, model, apiKey, temperature = 0, logLeve
  * script. A null storage is always wired so `llmExpand` cache misses silently
  * skip caching — eval fixtures are re-fetched manually when stale. Pass
  * `{ apiKey, model }` to enable `llmExpand`; omit them for `templates` which
- * needs no LLM.
+ * needs no LLM. `limit`/`temperature` override `config.queryExpansion`.
  *
  * @param {{
  *   query: { city: string, queryText: string, timeframe: { from: string, to: string } },
  *   apiKey?: string,
  *   model?: string,
+ *   limit?: number,
+ *   temperature?: number,
  *   logLevel?: string,
  * }} opts
  */
-export function buildExpandCtx({ query, apiKey, model, logLevel }) {
+export function buildExpandCtx({ query, apiKey, model, limit, temperature, logLevel }) {
   const config = mergeConfig(DEFAULTS, {
     ...(model ? { llm: { model } } : {}),
+    queryExpansion: {
+      ...(limit != null ? { defaultLimit: limit } : {}),
+      ...(temperature != null ? { temperature } : {}),
+    },
     logging: { level: logLevel, file: null },
   });
   const logger = createLogger(logLevel, null);
