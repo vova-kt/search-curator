@@ -18,7 +18,7 @@ const CACHE_PREFIX = 'qx:llmExpand:v2';
  */
 export function llmExpand() {
   return async function llmExpandStrategy(ctx) {
-    const cap = ctx.config.queryExpansion.defaultLimit;
+    const cap = ctx.config.queryExpansion.maxQueries;
     const tf = resolveTimeframe(ctx.query.timeframe, ctx.config.pipeline.defaultRollingDays);
     const key = cacheKey(ctx.query.city, ctx.query.queryText, tf);
 

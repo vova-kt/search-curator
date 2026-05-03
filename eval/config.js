@@ -10,27 +10,6 @@
 import {DEFAULTS} from "../src/index.js";
 
 export const config = {
-  /** fetch-search.js — pulls real search hits and writes <slug>.search.json. */
-  fetchSearch: {
-    query: 'standup comedy in Russian',
-    city: 'Berlin',
-    days: 90,
-    /** @type {'tavily' | 'firecrawl'} */
-    search: 'tavily',
-    /**
-     * null = single literal "<query> <city>" search;
-     * 'templates' = 4 deterministic phrasings (no LLM);
-     * 'llm' = llmExpand strategy (requires OPENAI_API_KEY).
-     * @type {'templates' | 'llm' | null}
-     */
-    expand: null,
-    /** Used only when expand === 'llm'. */
-    model: DEFAULTS.llm.model,
-    maxResults: 20,
-    /** Overwrite an existing <slug>.search.json. */
-    force: false,
-  },
-
   /** run-extract.js — runs extract() against <fixture>.search.json. */
   runExtract: {
     fixture: 'standup-comedy-in-russian__berlin__90d-from-2026-05-01',

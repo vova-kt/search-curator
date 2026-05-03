@@ -130,7 +130,7 @@ function canonicalizeUrl(url) {
 /**
  * @param {import('../core/types.js').SearchHit[]} hits
  */
-function dedupeByUrl(hits) {
+export function dedupeByUrl(hits) {
   /** @type {Map<string, import('../core/types.js').SearchHit>} */
   const seen = new Map();
   for (const h of hits) {

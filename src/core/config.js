@@ -51,7 +51,7 @@ export const DEFAULTS = Object.freeze({
   /** Pipeline-stage tuning. See [docs/pipeline.md](../../docs/pipeline.md). */
   pipeline: {
     /** Number of curated events returned when the caller doesn't set `Query.limit`. */
-    defaultLimit: 20,
+    maxEvents: 20,
     /** Look-ahead window (days) used when the caller asks for "upcoming" events without an explicit timeframe. */
     defaultRollingDays: 90,
     /** Worker-pool size for the extract stage's parallel LLM calls. */
@@ -67,7 +67,7 @@ export const DEFAULTS = Object.freeze({
     /** Default model id passed to the adapter (e.g. an OpenAI / Anthropic model id). */
     model: 'gpt-5.4-mini',
     /** Max queries `llmExpand` returns when no per-call limit is given. */
-    defaultLimit: 8,
+    maxQueries: 8,
     /** Sampling temperature for the expand-queries LLM call. Higher than the
      *  global default to get phrasing variety without fully randomizing. */
     temperature: 0.1,

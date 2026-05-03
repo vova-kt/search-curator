@@ -18,60 +18,78 @@
 
 import { tavily } from '../../src/adapters/search/tavily.js';
 import { firecrawl } from '../../src/adapters/search/firecrawl.js';
-import { templates } from '../../src/strategies/queryExpansion/templates.js';
-import { llmExpand } from '../../src/strategies/queryExpansion/llmExpand.js';
+import { templates, llmExpand } from '../../src/strategies/queryExpansion/index.js';
 import { requireEnv } from '../core/env.js';
 import { makeSlug } from '../core/slug.js';
 import { writeSearchFixture } from '../core/fixtures.js';
 import { buildExpandCtx } from '../core/ctx.js';
-import { config } from '../config.js';
+import {DEFAULTS} from "../../src/index.js";
+import {dedupeByUrl} from '../../src/stages/discover.js'
 
-const { query: queryText, city, days, search: which, expand, model, maxResults, force } = config.fetchSearch;
+const config = {
+  query: 'standup comedy in Russian',
+  city: 'Berlin',
+  days: 90,
+  /** @type {'tavily' | 'firecrawl'} */
+  searchProvider: 'tavily',
+  /**
+   * null = single literal "<query> <city>" search;
+   * 'templates' = 4 deterministic phrasings (no LLM);
+   * 'llm' = llmExpand strategy (requires OPENAI_API_KEY).
+   * @type {'templates' | 'llm' | null}
+   */
+  expand: 'llm',
+  /** Used only when expand === 'llm'. */
+  model: DEFAULTS.llm.model,
+  maxResults: 20,
+  /** Overwrite an existing <slug>.search.json. */
+  force: false,
+}
 
 try {
-  const adapter = buildSearchAdapter(which);
+  const adapter = buildSearchAdapter(config.searchProvider);
 
   const today = new Date();
   const to = new Date(today);
-  to.setUTCDate(to.getUTCDate() + days);
+  to.setUTCDate(to.getUTCDate() + config.days);
   const timeframe = { from: isoDate(today), to: isoDate(to) };
 
-  const slug = makeSlug({ queryText, city, days, from: timeframe.from });
+  const slug = makeSlug({
+      queryText: config.query,
+      city: config.city,
+      days: config.days,
+      from: timeframe.from
+  });
 
   let queries;
-  if (expand) {
-    const strategy = buildExpandStrategy(expand);
+  if (config.expand) {
+    const strategy = buildExpandStrategy(config.expand);
     const expandCtx = buildExpandCtx({
-      query: { city, queryText, timeframe },
-      ...(expand === 'llm' ? { apiKey: requireEnv('OPENAI_API_KEY'), model } : {}),
+      query: { city: config.city, queryText: config.query, timeframe },
+      ...(config.expand === 'llm' ? { apiKey: requireEnv('OPENAI_API_KEY'), model: config.model } : {}),
     });
     queries = await strategy(expandCtx);
-    console.log(`expanded to ${queries.length} queries via ${expand}`);
+    console.log(`expanded to ${queries.length} queries via ${config.expand}`);
   } else {
-    queries = [`${queryText} ${city}`];
+    queries = [`${config.queryText} ${config.city}`];
   }
 
-  console.log(`fetching: adapter=${which} queries=${queries.length} max=${maxResults}`);
-  const allHitsArrays = await Promise.all(queries.map((q) => adapter.search(q, { maxResults })));
-  const seen = new Set();
-  const hits = allHitsArrays.flat().filter((h) => {
-    if (seen.has(h.url)) return false;
-    seen.add(h.url);
-    return true;
-  });
-  const totalRaw = allHitsArrays.reduce((s, a) => s + a.length, 0);
-  console.log(`got ${hits.length} hits (${totalRaw} total, ${totalRaw - hits.length} deduped by url)`);
+  console.log(`fetching: adapter=${config.searchProvider} queries=${queries.length} max=${config.maxResults}`);
+  const allHitsArrays = await Promise.all(queries.map((q) => adapter.search(q, { maxResults: config.maxResults })));
+  const allHits = allHitsArrays.flat()
+  const hits = dedupeByUrl(allHits)
+  console.log(`total hits ${allHits.length}, deduped to ${hits.length}`);
 
   const path = writeSearchFixture(
     {
       slug,
-      query: { city, queryText },
+      query: { city: config.city, queryText: config.query },
       timeframe,
       fetchedAt: new Date().toISOString(),
-      search: { adapter: which, queries },
+      search: { adapter: config.searchProvider, queries },
       hits,
     },
-    { force },
+    { force: config.force },
   );
   console.log(`wrote ${path}`);
 } catch (err) {
