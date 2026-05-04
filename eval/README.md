@@ -18,7 +18,7 @@ Every script reads its parameters from [config.js](config.js); no CLI flags. Edi
 
 ```sh
 node --env-file=.env.dev eval/scripts/fetch-search.js
-node --env-file=.env.dev eval/scripts/run-extract.js
+node --env-file=.env.dev eval/scripts/extract/index.js
 node --env-file=.env.dev eval/scripts/expand/index.js
 node                     eval/scripts/promote-golden.js
 ```
@@ -28,7 +28,7 @@ node                     eval/scripts/promote-golden.js
 ## Extraction workflow
 
 1. Set `config.fetchSearch` and run `fetch-search.js` to write `eval/fixtures/<slug>.search.json` (commit it).
-2. Set `config.runExtract.fixture` to that slug and run `run-extract.js`. First run prints a bootstrap report — hand-curate the run JSON into `eval/fixtures/<slug>.golden.json` and commit.
+2. Set `config.runExtract.fixture` to that slug and run `extract/index.js`. First run prints a bootstrap report — hand-curate the run JSON into `eval/fixtures/<slug>.golden.json` and commit.
 3. Iterate on [src/prompts/extractEvents.js](../src/prompts/extractEvents.js), rerun, compare metrics.
 4. Once a new prompt is clearly better, set `config.promoteGolden.fixture` and run `promote-golden.js` to copy the reviewed run's events into the golden file.
 

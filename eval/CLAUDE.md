@@ -17,7 +17,7 @@ Manual LLM eval pipelines for prompt iteration. Outside the `test/**` glob — `
 2. Add `<slug>.<kind>-input.json` / `<slug>.<kind>-golden.json` path + load helpers to [core/fixtures.js](core/fixtures.js).
 3. Add `RunKind.<KIND>` to [core/runKind.js](core/runKind.js).
 4. Add reusable metrics to [core/metrics.js](core/metrics.js); kind-specific computation can stay inline in the script.
-5. Create `scripts/<kind>/index.js` modeled on [expand/](scripts/expand/) — load fixtures, build ctx, call the strategy, render report, `writeRun(...)`.
+5. Create `scripts/<kind>/index.js` modeled on [extract/](scripts/extract/) or [expand/](scripts/expand/) — load fixtures, build ctx, call the strategy, render report, `writeRun(...)`.
 
 ## Gotchas
 

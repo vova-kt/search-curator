@@ -1,224 +1,19 @@
-#!/usr/bin/env node
-/**
- * run-extract.js — the extraction eval.
- *
- * Loads every `<slug>.search.json` fixture, calls `extract(hits, ctx)` directly
- * with a real LLM, and renders a consolidated metric report against
- * `<slug>.golden.json` files. Writes run records to
- * `eval/runs/<slug>__<ts>.json` for offline diffing. When no golden file exists
- * the extracted events are auto-promoted to a new golden file.
- *
- * All fixtures are processed concurrently (Promise.allSettled).
- *
- * Configure model/temperature below. Run:
- *   node --env-file=.env.dev eval/scripts/run-extract.js
- */
+import { scoreCorrelation } from '../../core/metrics.js';
+import { ratio } from '../../core/report.js';
+import { overallScore } from '../../../src/core/scoring.js';
+import { DEFAULTS } from '../../../src/index.js';
+import { fmtDay, fmtCorr, section } from './helpers.js';
 
-import { resolve } from 'node:path';
-import { extract } from '../../src/stages/extract.js';
-import { requireEnv } from '../core/env.js';
-import {
-  listSearchSlugs,
-  loadSearchFixture,
-  loadGoldenFixture,
-  writeGoldenFixture,
-} from '../core/fixtures.js';
-import { writeRun, gitShaOf } from '../core/runs.js';
-import { RunKind } from '../core/runKind.js';
-import { buildExtractCtx } from '../core/ctx.js';
-import {
-  matchEvents,
-  precisionRecall,
-  fieldAccuracy,
-  hallucinationSignal,
-  scoreCorrelation,
-} from '../core/metrics.js';
-import { ratio } from '../core/report.js';
-import { overallScore } from '../../src/core/scoring.js';
-import { DEFAULTS } from '../../src/index.js';
-
-const config = {
-  model: 'gpt-5.4-mini',
-  temperature: 0,
-  reasoningEffort: null,
-  // model: 'gpt-5.5',
-  // temperature: 1,
-  // reasoningEffort: /** @type {'low'|'medium'|'high'} */ ('high'),
-};
-
-try {
-  const apiKey = requireEnv('OPENAI_API_KEY');
-  const slugs = listSearchSlugs().filter((slug) => slug.includes('berlin'));
-
-  if (slugs.length === 0) {
-    console.log('no *.search.json fixtures found');
-    process.exit(0);
-  }
-
-  const results = await Promise.allSettled(slugs.map((slug) => runOne(slug, apiKey)));
-
-  printReport(slugs, results);
-} catch (err) {
-  console.error(err instanceof Error ? (err.stack ?? err.message) : err);
-  process.exit(1);
-}
-
-// ── helpers ────────────────────────────────────────────────────────────
-
-/** @param {string} s */
-function fmtDay(s) {
-  const t = Date.parse(s);
-  return Number.isNaN(t) ? s : new Date(t).toISOString().slice(0, 10);
-}
-
-/** @param {number | null} r */
-function fmtCorr(r) {
-  return r == null ? '—' : r.toFixed(3);
-}
-
-/**
- * @param {string} label
- * @param {number} n
- */
-function section(label, n) {
-  const tag = n > 0 ? ` (${n})` : '';
-  return (
-    `\n── ${label}${tag} ` + '─'.repeat(Math.max(0, 78 - label.length - tag.length - 4))
-  );
-}
-
-// ── types ──────────────────────────────────────────────────────────────
-
-/**
- * @typedef {{ spearman: number | null, pearson: number | null, mae: number, n: number }} CorrResult
- */
-
-/**
- * @typedef {Object} SlugMetrics
- * @property {{ precision: number, recall: number, f1: number,
- *              tp: number, goldenCount: number, candidateCount: number }} pr
- * @property {{ n: number, date: number, venue: number }} fa
- * @property {import('../core/metrics.js').MatchResult} match
- * @property {CorrResult} overallCorr
- * @property {CorrResult} queryIntentCorr
- */
-
-/**
- * @typedef {Object} SlugResult
- * @property {string} slug
- * @property {import('../../src/core/types.js').Event[]} events
- * @property {import('../core/metrics.js').GenericEvent[] | null} golden
- * @property {number} hitCount
- * @property {number} elapsedMs
- * @property {SlugMetrics | null} metrics
- * @property {Array<{ idx: number, title: string }>} hallucination
- * @property {string | null} goldenPath
- */
-
-// ── per-slug runner ────────────────────────────────────────────────────
-
-/**
- * @param {string} slug
- * @param {string} apiKey
- * @returns {Promise<SlugResult>}
- */
-async function runOne(slug, apiKey) {
-  const fixture = loadSearchFixture(slug);
-  const goldenFixture = loadGoldenFixture(slug);
-
-  const ctx = buildExtractCtx({
-    query: {
-      city: fixture.query.city,
-      queryText: fixture.query.queryText,
-      timeframe: fixture.timeframe,
-    },
-    model: config.model,
-    apiKey,
-    temperature: config.temperature,
-    reasoningEffort: config.reasoningEffort,
-  });
-
-  const t0 = Date.now();
-  const events = await extract(fixture.hits, ctx);
-  const elapsedMs = Date.now() - t0;
-
-  const promptPath = resolve(
-    new URL('../../src/prompts/extractEvents.js', import.meta.url).pathname,
-  );
-
-  const golden = goldenFixture ? goldenFixture.events : null;
-  const weights = DEFAULTS.scoring.weights;
-  let metrics = null;
-  if (golden) {
-    const m = matchEvents(golden, events);
-    const pr = precisionRecall(m, golden.length, events.length);
-    const fa = fieldAccuracy(m);
-    const goldenOverall = m.matched.map((p) =>
-      overallScore(golden[p.goldenIdx].score ?? {}, weights),
-    );
-    const candOverall = m.matched.map((p) =>
-      overallScore(events[p.candidateIdx].score ?? {}, weights),
-    );
-    const goldenQI = m.matched.map((p) => golden[p.goldenIdx].score?.queryIntent ?? 0);
-    const candQI = m.matched.map((p) => events[p.candidateIdx].score?.queryIntent ?? 0);
-
-    metrics = {
-      pr,
-      fa,
-      match: m,
-      overallCorr: scoreCorrelation(goldenOverall, candOverall),
-      queryIntentCorr: scoreCorrelation(goldenQI, candQI),
-    };
-  }
-
-  const halluc = hallucinationSignal(events, fixture.hits);
-
-  const reportData = metrics
-    ? {
-        precisionRecall: metrics.pr,
-        fieldAccuracy: metrics.fa,
-        match: metrics.match,
-        scoreQuality: {
-          overall: metrics.overallCorr,
-          queryIntent: metrics.queryIntentCorr,
-        },
-        hallucination: halluc,
-      }
-    : { hallucination: halluc };
-
-  writeRun({
-    slug,
-    kind: RunKind.EXTRACT,
-    llm: { provider: 'openai', model: config.model, temperature: config.temperature },
-    promptHashes: { 'extractEvents.js': gitShaOf(promptPath) },
-    output: events,
-    report: reportData,
-  });
-
-  let goldenPath = null;
-  if (!goldenFixture) {
-    goldenPath = writeGoldenFixture({ slug, events });
-  }
-
-  return {
-    slug,
-    events,
-    golden,
-    hitCount: fixture.hits.length,
-    elapsedMs,
-    metrics,
-    hallucination: halluc,
-    goldenPath,
-  };
-}
-
-// ── consolidated report ────────────────────────────────────────────────
+/** @typedef {import('./types.js').SlugResult} SlugResult */
+/** @typedef {import('./types.js').Aggregate} Aggregate */
+/** @typedef {import('./types.js').CorrResult} CorrResult */
 
 /**
  * @param {string[]} slugs
  * @param {PromiseSettledResult<SlugResult>[]} results
+ * @param {{ model: string, temperature: number }} config
  */
-function printReport(slugs, results) {
+export function printReport(slugs, results, config) {
   /** @type {SlugResult[]} */
   const fulfilled = [];
   /** @type {Array<{ slug: string, reason: unknown }>} */
@@ -233,16 +28,13 @@ function printReport(slugs, results) {
   const evaluated = fulfilled.filter((sr) => sr.metrics);
   const bootstrapped = fulfilled.filter((sr) => !sr.metrics);
 
-  // ── header ──
   console.log(
     `extract eval — ${slugs.length} fixtures, model: ${config.model}, temperature: ${config.temperature}`,
   );
   if (failed.length > 0) console.log(`  ${failed.length} failed`);
 
-  // ── per-slug table ──
   printSlugTable(fulfilled, failed, bootstrapped.length > 0);
 
-  // ── aggregate + detail sections (only when we have golden-evaluated slugs) ──
   if (evaluated.length > 0) {
     const agg = aggregate(evaluated);
     printAggregate(evaluated.length, agg);
@@ -256,7 +48,6 @@ function printReport(slugs, results) {
     printInsights(evaluated, aggregate(evaluated));
   }
 
-  // ── bootstrap slugs ──
   if (bootstrapped.length > 0) {
     console.log(section('bootstrap — no golden', bootstrapped.length));
     for (const sr of bootstrapped) {
@@ -344,28 +135,10 @@ function printSlugTable(fulfilled, failed, hasBootstrap) {
 }
 
 /**
- * @typedef {Object} Aggregate
- * @property {number} tp
- * @property {number} goldenCount
- * @property {number} candidateCount
- * @property {number} recall
- * @property {number} precision
- * @property {number} f1
- * @property {number} dateOk
- * @property {number} venueOk
- * @property {number} matchedN
- * @property {number} dateAcc
- * @property {number} venueAcc
- * @property {number} hallucCount
- * @property {CorrResult} overallCorr
- * @property {CorrResult} queryIntentCorr
- */
-
-/**
  * @param {SlugResult[]} evaluated
  * @returns {Aggregate}
  */
-function aggregate(evaluated) {
+export function aggregate(evaluated) {
   let tp = 0,
     goldenCount = 0,
     candidateCount = 0;
@@ -527,7 +300,6 @@ function printInsights(evaluated, a) {
   /** @type {string[]} */
   const ins = [];
 
-  // recall vs precision balance
   if (a.recall < a.precision && a.recall < 0.9) {
     const worst = evaluated.reduce((w, sr) =>
       sr.metrics && sr.metrics.pr.recall < (w.metrics?.pr.recall ?? 1) ? sr : w,
@@ -557,7 +329,6 @@ function printInsights(evaluated, a) {
     );
   }
 
-  // field accuracy comparison
   if (a.matchedN > 0) {
     if (a.dateAcc < a.venueAcc - 0.05) {
       ins.push(
@@ -570,10 +341,8 @@ function printInsights(evaluated, a) {
           `venue name extraction is the weaker link. The prompt may need clearer venue-matching rules.`,
       );
     }
-
   }
 
-  // hallucination
   if (a.hallucCount > 0) {
     ins.push(
       `${a.hallucCount} event(s) flagged as hallucinations (<40% title-token overlap with source pages) — ` +
@@ -581,7 +350,6 @@ function printInsights(evaluated, a) {
     );
   }
 
-  // cross-slug variance
   if (evaluated.length > 1) {
     const sorted = evaluated
       .filter((sr) => sr.metrics)
@@ -597,7 +365,6 @@ function printInsights(evaluated, a) {
     }
   }
 
-  // score quality
   if (a.overallCorr.spearman != null && a.overallCorr.spearman < 0.5) {
     ins.push(
       `overall score Spearman correlation is low (${a.overallCorr.spearman.toFixed(3)}) — ` +
@@ -612,7 +379,6 @@ function printInsights(evaluated, a) {
     );
   }
 
-  // all-green
   const scoreOk = a.overallCorr.spearman == null || a.overallCorr.spearman >= 0.7;
   if (
     a.recall >= 0.95 &&

@@ -18,7 +18,7 @@ Manual-only pipelines for evaluating LLM-driven stages (extract today, rank next
 ```
 eval/
   core/        # reusable across eval kinds (slug, fixtures, runs, runKind, matching, metrics, report, ctx, env)
-  scripts/     # CLIs: fetch-search, run-extract, expand/, promote-golden
+  scripts/     # CLIs: fetch-search, extract/, expand/, promote-golden
   config.js    # parameters per script
   fixtures/    # committed; subfolders per eval kind (search/, extract/, expand/)
   runs/        # gitignored
@@ -32,7 +32,7 @@ There are no CLI flags. Every script reads its parameters from [eval/config.js](
 
 ## Fixture format
 
-`<slug>.search.json` carries everything `run-extract.js` needs to rebuild `ctx.query`:
+`<slug>.search.json` carries everything the extract eval needs to rebuild `ctx.query`:
 
 ```jsonc
 {
@@ -57,7 +57,7 @@ Edit the relevant block in [eval/config.js](../eval/config.js) before each step.
    ```
 2. **Run extraction**. Set `config.runExtract.fixture` to the slug.
    ```sh
-   node --env-file=.env.dev eval/scripts/run-extract.js
+   node --env-file=.env.dev eval/scripts/extract/index.js
    ```
 3. **First time**: hand-curate the run JSON into `eval/fixtures/extract/<slug>.golden.json`, commit. Subsequent runs compare against it.
 4. **Iterate** on [src/prompts/extractEvents.js](../src/prompts/extractEvents.js), rerun step 2.
