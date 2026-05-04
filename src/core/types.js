@@ -269,7 +269,7 @@
  * @property {{ maxResultsPerAdapter: number, timeoutMs: number }} search
  * @property {{ maxEvents: number, defaultRollingDays: number, maxWorkers: number }} pipeline
  * @property {{ model: string, maxQueries: number, temperature: number, maxTokens: number }} queryExpansion
- * @property {{ fuzzyTitleThreshold: number }} dedupe
+ * @property {{ jaccardThreshold: number }} dedupe
  * @property {{ deriveTraits: boolean, traitsRefreshThreshold: number }} preferences
  * @property {{ weights: ScoreWeights }} scoring
  * @property {{ level: 'silent'|'error'|'warn'|'info'|'debug', file: string|null }} logging

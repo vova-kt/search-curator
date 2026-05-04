@@ -37,11 +37,11 @@ export const DEFAULTS = Object.freeze({
     /** Sampling temperature. Low by default — prompts return JSON. */
     temperature: 0.0,
     /** Max output tokens per call. Sized for the largest extract batches. */
-    maxTokens: 15_000,
+    maxTokens: 12_000,
     /** Max retries per LLM call on failure (e.g. truncated JSON, transient errors). */
     maxRetries: 1,
     /** Max estimated input tokens per extract LLM call. Hits are batched up to this cap. */
-    batchInputTokens: 10_000,
+    batchInputTokens: 8_000,
     /** Token estimator: tokens ≈ ceil(chars / charsPerToken). */
     charsPerToken: 4,
   },
@@ -49,7 +49,7 @@ export const DEFAULTS = Object.freeze({
   /** Defaults applied to every configured search adapter. */
   search: {
     /** Per-adapter cap on hits returned per query. */
-    maxResultsPerAdapter: 20,
+    maxResultsPerAdapter: 15,
     /** Per-call timeout. Adapters abort the underlying request after this. */
     timeoutMs: 15_000,
   },
@@ -61,7 +61,7 @@ export const DEFAULTS = Object.freeze({
     /** Look-ahead window (days) used when the caller asks for "upcoming" events without an explicit timeframe. */
     defaultRollingDays: 90,
     /** Worker-pool size for the extract stage's parallel LLM calls. */
-    maxWorkers: 4,
+    maxWorkers: 10,
   },
 
   /** Tuning for the `llmExpand` query-expansion strategy. */
@@ -82,13 +82,13 @@ export const DEFAULTS = Object.freeze({
     /** Default model id passed to the adapter */
     model: 'gpt-5-mini',
     /** Sampling temperature */
-    temperature: 0.0,
+    temperature: 1.0,
   },
 
   /** Tuning for dedupe strategies. */
   dedupe: {
-    /** Similarity threshold above which two titles are treated as duplicates by `fuzzyTitle`. */
-    fuzzyTitleThreshold: 0.85,
+    /** Token-Jaccard similarity threshold above which two deduplicationKeys are treated as duplicates. */
+    jaccardThreshold: 0.6,
   },
 
   /** Preference / feedback behavior. See [docs/preferences.md](../../docs/preferences.md). */

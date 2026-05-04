@@ -199,9 +199,22 @@ async function extractFromBatch(batch, ctx, query, timeframe, expandedQueries, s
   /** @type {import('../core/types.js').Event[]} */
   const events = [];
   for (const r of raws) {
-    if (!r.title || !r.startsAt || !r.venue?.name || !r.venue?.city) continue;
-    if (!r.source?.name || !r.source?.url) continue;
-    if (!r.score) continue;
+    if (!r.title || !r.startsAt || !r.venue?.name || !r.venue?.city) {
+      ctx.logger.warn('Skipping event extraction due to missing required fields', JSON.stringify(r));
+      continue;
+    }
+    if (!r.source?.name || !r.source?.url) {
+      ctx.logger.warn('Skipping event extraction due to missing source info', JSON.stringify(r));
+      continue;
+    }
+    if (!r.deduplicationKey) {
+      ctx.logger.warn('Skipping event extraction due to missing deduplicationKey', JSON.stringify(r));
+      continue;
+    }
+    if (!r.score) {
+      ctx.logger.warn('Skipping event extraction due to missing score', JSON.stringify(r));
+      continue;
+    }
     events.push({
       id: eventId({ title: r.title, startsAt: r.startsAt, venue: r.venue }),
       title: r.title,

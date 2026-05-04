@@ -46,17 +46,17 @@ export async function runCuration(ctx, query, opts) {
     onProgress: opts?.onProgress,
   });
   emit({ stage: ProgressStage.EXTRACT, phase: ProgressPhase.DONE, count: extracted.length });
-  log.info(`[pipeline] extract → ${extracted.length} events`);
+  logEvents(log, 'extract', extracted);
 
   emit({ stage: ProgressStage.DEDUPE, phase: ProgressPhase.START, total: extracted.length });
-  const { events: deduped, usage: dedupeUsage } = await dedupe(extracted, ctx, query);
+  const { events: deduped, usage: dedupeUsage } = await dedupe(extracted, ctx, query, opts);
   emit({ stage: ProgressStage.DEDUPE, phase: ProgressPhase.DONE, count: deduped.length });
-  log.info(`[pipeline] dedupe → ${deduped.length} events (dropped ${extracted.length - deduped.length})`);
+  logEvents(log, 'dedupe', deduped);
 
   emit({ stage: ProgressStage.RANK, phase: ProgressPhase.START, total: deduped.length });
-  const { events: ranked, usage: rankUsage } = await rank(deduped, ctx, query);
+  const { events: ranked, usage: rankUsage } = await rank(deduped, ctx, query, opts);
   emit({ stage: ProgressStage.RANK, phase: ProgressPhase.DONE, count: ranked.length });
-  log.info(`[pipeline] rank → ${ranked.length} events (dropped ${deduped.length - ranked.length})`);
+  logEvents(log, 'rank', ranked);
 
   const limit = query.limit ?? ctx.config.pipeline.maxEvents;
   const events = ranked.slice(0, limit);
@@ -71,8 +71,22 @@ export async function runCuration(ctx, query, opts) {
     );
   }
   emit({ stage: ProgressStage.PERSIST, phase: ProgressPhase.DONE, count: events.length });
-  log.info(`[pipeline] persist → ${events.length} events (limit=${limit})`);
-  log.debug('[pipeline] result', events.map((e) => ({ id: e.id, title: e.title, startsAt: e.startsAt })));
+  logEvents(log, 'persist', events);
 
   return { events, usage: sumUsage([discoverUsage, extractUsage, dedupeUsage, rankUsage]) };
+}
+
+/**
+ * @param {import('./logger.js').Logger} log
+ * @param {string} stage
+ * @param {import('./types.js').Event[]} events
+ */
+function logEvents(log, stage, events) {
+  log.info(`[pipeline] ${stage} → ${events.length} events`);
+  log.debug(
+    `[${stage}] ------------------`,
+    events
+      .map((e) => `${e.deduplicationKey}\n${e.source.url}\n${JSON.stringify(e.score)}`)
+      .join('\n--------------------------------\n'),
+  );
 }

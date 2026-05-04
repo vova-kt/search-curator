@@ -4,7 +4,6 @@ import {
   tokenize,
   normalizeVenue,
   titleSimilarity,
-  titleMatches,
   dateMatches,
   venueMatches,
 } from '../eval/core/matching.js';
@@ -128,56 +127,54 @@ describe('dateMatches', () => {
   });
 });
 
-describe('matchEvents two-pass', () => {
-  const ev = (title, startsAt, venue) => ({ title, startsAt, venue: { name: venue, city: 'Berlin' } });
+describe('matchEvents dedupKey', () => {
+  const ev = (title, dedupKey) => ({ title, deduplicationKey: dedupKey, startsAt: '2026-05-06', venue: { name: 'V', city: 'Berlin' } });
 
-  test('pass 1: same-language title match', () => {
-    const golden = [ev('Open mic in Berlin', '2026-05-06', 'SaliGari Bar')];
-    const candidate = [ev('Open mic in Berlin', '2026-05-06', 'SaliGari Bar')];
+  test('pass 0: exact dedupKey match', () => {
+    const golden = [ev('Open mic in Berlin', 'open mic, saligari, 06-05-26')];
+    const candidate = [ev('Open mic in Berlin', 'open mic, saligari, 06-05-26')];
     const r = matchEvents(golden, candidate);
     assert.equal(r.matched.length, 1);
-    assert.ok(r.matched[0].fields.title);
+    assert.ok(r.matched[0].fields.dedupKey);
   });
 
-  test('pass 2: cross-lingual fallback via venue+date', () => {
-    const golden = [ev('Открытый микрофон. Стендап в Берлине', '2026-05-06', 'SaliGari Bar')];
-    const candidate = [ev('Open mic. Standup in Berlin', '2026-05-06', 'SaliGari Bar')];
+  test('pass 1: fuzzy dedupKey match', () => {
+    const golden = [ev('Open mic', 'open mic night, saligari bar, 06-05-26')];
+    const candidate = [ev('Open mic', 'open mic, saligari, 06-05-26')];
     const r = matchEvents(golden, candidate);
     assert.equal(r.matched.length, 1);
-    assert.ok(!r.matched[0].fields.title, 'should be a fallback match');
-    assert.ok(r.matched[0].fields.venue);
-    assert.ok(r.matched[0].fields.date);
+    assert.ok(!r.matched[0].fields.dedupKey, 'fuzzy, not exact');
   });
 
-  test('title match takes priority over fallback', () => {
-    const golden = [ev('Open mic in Berlin', '2026-05-06', 'SaliGari Bar')];
-    const candidate = [
-      ev('Open mic in Berlin', '2026-05-06', 'Other Venue'),
-      ev('Другое название', '2026-05-06', 'SaliGari Bar'),
-    ];
-    const r = matchEvents(golden, candidate);
-    assert.equal(r.matched.length, 1);
-    assert.ok(r.matched[0].fields.title, 'title match should win');
-    assert.equal(r.matched[0].candidateIdx, 0);
-  });
-
-  test('fallback requires both venue AND date', () => {
-    const golden = [ev('Стендап шоу', '2026-05-06', 'SaliGari Bar')];
-    const candidate = [
-      ev('Some show', '2026-05-06', 'Other Venue'),
-      ev('Another show', '2026-06-01', 'SaliGari Bar'),
-    ];
+  test('no match when dedupKeys are unrelated', () => {
+    const golden = [ev('Jazz night', 'jazz night, blue note, 06-05-26')];
+    const candidate = [ev('Rock show', 'rock show, columbiahalle, 10-05-26')];
     const r = matchEvents(golden, candidate);
     assert.equal(r.matched.length, 0);
     assert.equal(r.unmatchedGolden.length, 1);
+    assert.equal(r.unmatchedCandidate.length, 1);
   });
 
-  test('candidate used in pass 1 is not available for pass 2', () => {
-    const golden = [
-      ev('Open mic in Berlin', '2026-05-06', 'SaliGari Bar'),
-      ev('Открытый микрофон', '2026-05-06', 'SaliGari Bar'),
+  test('exact match takes priority over fuzzy', () => {
+    const key = 'open mic, saligari, 06-05-26';
+    const golden = [ev('Open mic', key)];
+    const candidate = [
+      ev('Open mic (fuzzy)', 'open mic night, saligari bar, 06-05-26'),
+      ev('Open mic (exact)', key),
     ];
-    const candidate = [ev('Open mic in Berlin', '2026-05-06', 'SaliGari Bar')];
+    const r = matchEvents(golden, candidate);
+    assert.equal(r.matched.length, 1);
+    assert.ok(r.matched[0].fields.dedupKey, 'exact match');
+    assert.equal(r.matched[0].candidateIdx, 1);
+  });
+
+  test('candidate used in pass 0 is not available for pass 1', () => {
+    const key = 'open mic, saligari, 06-05-26';
+    const golden = [
+      ev('Exact match', key),
+      ev('Fuzzy match', 'open mic night, saligari bar, 06-05-26'),
+    ];
+    const candidate = [ev('Only one', key)];
     const r = matchEvents(golden, candidate);
     assert.equal(r.matched.length, 1, 'only one candidate to match');
     assert.equal(r.unmatchedGolden.length, 1);

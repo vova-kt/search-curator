@@ -9,10 +9,10 @@ test('mergeConfig: returns deep-frozen DEFAULTS clone when no override', () => {
 });
 
 test('mergeConfig: deep-merges override', () => {
-  const c = mergeConfig(DEFAULTS, { llm: { temperature: 0.5 }, dedupe: { fuzzyTitleThreshold: 0.9 } });
+  const c = mergeConfig(DEFAULTS, { llm: { temperature: 0.5 }, dedupe: { jaccardThreshold: 0.7 } });
   assert.equal(c.llm.temperature, 0.5);
   assert.equal(c.llm.model, DEFAULTS.llm.model);
-  assert.equal(c.dedupe.fuzzyTitleThreshold, 0.9);
+  assert.equal(c.dedupe.jaccardThreshold, 0.7);
 });
 
 test('mergeConfig: arrays replace, not merge', () => {

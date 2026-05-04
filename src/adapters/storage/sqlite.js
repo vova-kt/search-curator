@@ -20,6 +20,7 @@ const SCHEMA = `
     source_json TEXT NOT NULL,
     price_json TEXT,
     occurrences_json TEXT,
+    deduplication_key TEXT,
     first_seen_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
     last_shown_at TEXT
@@ -97,10 +98,12 @@ export function sqlite({ path }) {
         INSERT INTO events (
           id, title, description, starts_at, ends_at, city,
           venue_json, source_json, price_json, occurrences_json,
+          deduplication_key,
           first_seen_at, last_seen_at, last_shown_at
         ) VALUES (
           @id, @title, @description, @starts_at, @ends_at, @city,
           @venue_json, @source_json, @price_json, @occurrences_json,
+          @deduplication_key,
           @first_seen_at, @last_seen_at, @last_shown_at
         )
         ON CONFLICT(id) DO UPDATE SET
@@ -112,6 +115,7 @@ export function sqlite({ path }) {
           source_json = excluded.source_json,
           price_json = excluded.price_json,
           occurrences_json = excluded.occurrences_json,
+          deduplication_key = excluded.deduplication_key,
           last_seen_at = excluded.last_seen_at
       `);
       const tx = d.transaction((rows) => {
@@ -307,6 +311,7 @@ export function sqlite({ path }) {
  * @property {string} source_json
  * @property {string|null} price_json
  * @property {string|null} occurrences_json
+ * @property {string|null} deduplication_key
  * @property {string} first_seen_at
  * @property {string} last_seen_at
  * @property {string|null} last_shown_at
@@ -328,6 +333,7 @@ function eventToRow(e, now) {
     source_json: JSON.stringify(e.source),
     price_json: e.price ? JSON.stringify(e.price) : null,
     occurrences_json: e.occurrences ? JSON.stringify(e.occurrences) : null,
+    deduplication_key: e.deduplicationKey ?? null,
     first_seen_at: e.firstSeenAt ?? now,
     last_seen_at: now,
     last_shown_at: e.lastShownAt ?? null,
@@ -349,6 +355,7 @@ function rowToEvent(row) {
     source: JSON.parse(row.source_json),
     price: row.price_json ? JSON.parse(row.price_json) : undefined,
     occurrences: row.occurrences_json ? JSON.parse(row.occurrences_json) : undefined,
+    deduplicationKey: row.deduplication_key ?? undefined,
     score: { queryIntent: 0, location: 0, dates: 0, languageIntent: 0, quality: 0 },
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,

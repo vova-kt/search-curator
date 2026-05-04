@@ -11,8 +11,8 @@ All strategies receive `query` as a separate parameter (not embedded in `ctx`) a
 A strategy that needs configuration exposes a factory:
 
 ```js
-export function fuzzyTitle({ threshold = 0.85 } = {}) {
-  return async function fuzzyTitleStrategy(events, ctx, query) { /* ... */ };
+export function byDedupKey(threshold) {
+  return function byDedupKeyStrategy(events, ctx, query) { /* ... */ };
 }
 ```
 
@@ -29,13 +29,11 @@ Default in `createCurator`: `[llmExpand(), templates()]` — both run, deduped �
 
 ## Dedupe
 
-[src/strategies/dedupe/](../src/strategies/dedupe/). Stable order across runs: cheap, exact strategies first; LLM-backed last.
+[src/strategies/dedupe/](../src/strategies/dedupe/). Default chain: `[byDedupKey]`.
 
-- **`byId`** — collapses events sharing the same content-derived `id` (hash of title / startsAt / venue / city). Catches "same event extracted from multiple source pages" without falsely collapsing distinct events listed on one page. Cheapest. Always run first.
-- **`fuzzyTitle`** — normalizes title (lowercase, strip punctuation, collapse whitespace) and compares same-day, same-city events; merges when similarity ≥ threshold. Similarity is `max(token-Jaccard, char-trigram-Jaccard)` — tolerates word-order/length differences (tokens) *and* typos or short titles (trigrams). Threshold configurable.
-- **`llmJudge`** — opt-in. Asks the LLM to merge a small set of borderline candidates. Only runs on pairs that survived `fuzzyTitle` but share a venue + date.
+- **`byDedupKey`** — primary dedup strategy. Uses token-Jaccard similarity on the LLM-generated `deduplicationKey` field ("artist, venue, dd-mm-yy" in lowercase English). Two events whose keys exceed the Jaccard threshold are treated as duplicates; first occurrence wins. Events without a `deduplicationKey` fall back to exact `id` match (content-derived hash). Threshold configurable via `config.dedupe.jaccardThreshold` (default 0.5).
 
-> **Why not key on `source.url`?** A listing page (one URL) often yields multiple distinct events. Keying dedupe on the source URL would collapse them. Always dedupe on content (`id`) or content-similarity (`fuzzyTitle`), never on the page where we found the listing.
+> **Why `deduplicationKey` over title or id?** The canonical id is brittle — minor title or time normalization differences across sources produce distinct hashes for the same real event. Raw title comparison needs same-day / same-city guards and still misses cross-lingual duplicates. The `deduplicationKey` is LLM-normalized to a stable "artist, venue, date" triple, making token-Jaccard a reliable and cheap similarity measure.
 
 ### Cross-session dedupe is stage-level, not a strategy
 

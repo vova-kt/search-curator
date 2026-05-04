@@ -5,7 +5,7 @@
 
 import { DEFAULTS, mergeConfig } from './config.js';
 import { createLogger } from './logger.js';
-import { byId, fuzzyTitle } from '../strategies/dedupe/index.js';
+import { byDedupKey } from '../strategies/dedupe/index.js';
 import { byDate, rules } from '../strategies/rank/index.js';
 import { llmExpand, templates } from '../strategies/queryExpansion/index.js';
 
@@ -24,7 +24,7 @@ export function createContext(opts) {
   const logger = createLogger(config.logging.level, config.logging.file);
   const strategies = {
     queryExpansion: opts.strategies?.queryExpansion ?? [llmExpand(), templates()],
-    dedupe: opts.strategies?.dedupe ?? [byId, fuzzyTitle(config.dedupe.fuzzyTitleThreshold)],
+    dedupe: opts.strategies?.dedupe ?? [byDedupKey(config.dedupe.jaccardThreshold)],
     rank: opts.strategies?.rank ?? [rules, byDate],
   };
   return { llm: opts.llm, search: opts.search, storage: opts.storage, strategies, config, logger };
