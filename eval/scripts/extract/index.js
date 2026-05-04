@@ -22,10 +22,8 @@ import { printReport } from './report.js';
 const config = {
   model: 'gpt-5.4-mini',
   temperature: 0,
-  reasoningEffort: null,
   // model: 'gpt-5.5',
   // temperature: 1,
-  // reasoningEffort: /** @type {'low'|'medium'|'high'} */ ('high'),
 };
 
 try {
@@ -37,7 +35,9 @@ try {
     process.exit(0);
   }
 
-  const results = await Promise.allSettled(slugs.map((slug) => runOne(slug, apiKey, config)));
+  const results = await Promise.allSettled(
+    slugs.map((slug) => runOne(slug, apiKey, config)),
+  );
 
   printReport(slugs, results, config);
 } catch (err) {

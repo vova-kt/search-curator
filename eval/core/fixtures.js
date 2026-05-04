@@ -32,6 +32,7 @@ const FIXTURES_DIR = resolve(HERE, '..', 'fixtures');
  * @property {string} title
  * @property {string} startsAt           // ISO 8601
  * @property {string} [endsAt]
+ * @property {import('../../src/core/types.js').EventScore} score
  * @property {{ name: string, city: string, address?: string }} venue
  * @property {{ url: string, name?: string }} source
  * @property {{ free?: boolean, min?: number, max?: number, currency?: string }} [price]

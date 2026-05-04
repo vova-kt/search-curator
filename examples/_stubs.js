@@ -8,7 +8,6 @@
 export function stubLLM() {
   return {
     name: 'stub-llm',
-    model: 'stub',
     async chat(req) {
       // Recognize each prompt by a phrase in `system` and return canned JSON.
       if (req.system.includes('diverse web-search queries')) {
@@ -22,6 +21,7 @@ export function stubLLM() {
               'Kabarett Berlin',
             ],
           },
+          usage: { inputTokens: 0, outputTokens: 0 },
         };
       }
       if (req.system.includes('extract structured upcoming events')) {
@@ -45,6 +45,7 @@ export function stubLLM() {
               },
             ],
           },
+          usage: { inputTokens: 0, outputTokens: 0 },
         };
       }
       if (req.system.includes('filter and rank events')) {
@@ -54,21 +55,23 @@ export function stubLLM() {
         const m = req.messages[0]?.content?.match(/Candidates:\n(\[[\s\S]*?\])\n/);
         if (m) {
           try {
+            /** @type {any[]} */
             const candidates = JSON.parse(m[1]);
             return {
               text: '',
               json: {
                 ranked: candidates.map((c) => ({ id: c.id, rationale: 'stub: kept by dry run' })),
               },
+              usage: { inputTokens: 0, outputTokens: 0 },
             };
           } catch {}
         }
-        return { text: '', json: { ranked: [] } };
+        return { text: '', json: { ranked: [] }, usage: { inputTokens: 0, outputTokens: 0 } };
       }
       if (req.system.includes('summarize a user')) {
-        return { text: '', json: { traits: 'alt-comedy, intimate venues, weekends' } };
+        return { text: '', json: { traits: 'alt-comedy, intimate venues, weekends' }, usage: { inputTokens: 0, outputTokens: 0 } };
       }
-      return { text: '{}', json: {} };
+      return { text: '{}', json: {}, usage: { inputTokens: 0, outputTokens: 0 } };
     },
   };
 }

@@ -3,35 +3,37 @@
  */
 
 import OpenAI from 'openai';
-import {DEFAULTS} from "../../core/config.js";
+
+/** @type {import('../../core/types.js').LLMUsage} */
+const ZERO_USAGE = { inputTokens: 0, outputTokens: 0 };
 
 /**
- * @param {{ apiKey: string, model: string, baseURL?: string, maxRetries?: number }} opts
+ * @param {{ apiKey: string, baseURL?: string }} opts
  * @returns {import('../../core/types.js').LLMAdapter}
  */
-export function openai({ apiKey, model, baseURL, maxRetries = 0 }) {
+export function openai({ apiKey, baseURL }) {
   const client = new OpenAI({ apiKey, baseURL });
   return {
     name: 'openai',
-    model,
     async chat(req) {
       const messages = [
         /** @type {const} */ ({ role: 'system', content: req.system }),
         ...req.messages.map((m) => ({ role: m.role, content: m.content })),
       ];
+      const maxRetries = req.maxRetries ?? 0;
 
       let lastErr;
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         /** @type {string} */
         let text;
-        /** @type {{ inputTokens: number, outputTokens: number } | undefined} */
+        /** @type {import('../../core/types.js').LLMUsage} */
         let usage;
         try {
           const resp = await client.chat.completions.create({
-            model,
+            model: req.model,
             messages,
-            temperature: req.temperature ?? DEFAULTS.llm.temperature,
-            max_completion_tokens: req.maxTokens ?? DEFAULTS.llm.maxTokens,
+            temperature: req.temperature,
+            max_completion_tokens: req.maxTokens,
             response_format: req.json ? { type: 'json_object' } : undefined,
             reasoning_effort: req.reasoningEffort,
           }, { signal: req.signal });
@@ -39,7 +41,7 @@ export function openai({ apiKey, model, baseURL, maxRetries = 0 }) {
           text = resp.choices[0]?.message?.content ?? '';
           usage = resp.usage
             ? { inputTokens: resp.usage.prompt_tokens, outputTokens: resp.usage.completion_tokens }
-            : undefined;
+            : ZERO_USAGE;
         } catch (err) {
           lastErr = err;
           if (attempt < maxRetries) continue;

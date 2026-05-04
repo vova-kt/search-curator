@@ -39,16 +39,16 @@ function stemPhrase(text) {
 }
 
 /** @type {import('../../core/types.js').Strategy} */
-export const rules = (events, ctx) => {
-  const sq = ctx.query.savedQuery;
-  if (!sq) return events;
+export const rules = (events, _ctx, query) => {
+  const sq = query.savedQuery;
+  if (!sq) return { events };
 
   const excludeKeywordStems = (sq.excludeKeywords ?? [])
     .map((k) => stemPhrase(k))
     .filter((k) => k.length > 0);
   const excludeVenues = new Set((sq.excludeVenues ?? []).map((v) => normalize(v)));
 
-  return events.filter((e) => {
+  return { events: events.filter((e) => {
     if (excludeVenues.has(normalize(e.venue.name))) return false;
     if (excludeKeywordStems.length > 0) {
       const haystack = ` ${stemPhrase(`${e.title} ${e.description ?? ''}`)} `;
@@ -62,5 +62,5 @@ export const rules = (events, ctx) => {
       if (max !== undefined && e.price?.min !== undefined && e.price.min > max) return false;
     }
     return true;
-  });
+  }) };
 };

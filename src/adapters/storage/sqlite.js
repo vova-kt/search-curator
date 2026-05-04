@@ -349,6 +349,7 @@ function rowToEvent(row) {
     source: JSON.parse(row.source_json),
     price: row.price_json ? JSON.parse(row.price_json) : undefined,
     occurrences: row.occurrences_json ? JSON.parse(row.occurrences_json) : undefined,
+    score: { queryIntent: 0, location: 0, dates: 0, languageIntent: 0, quality: 0 },
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
     lastShownAt: row.last_shown_at ?? undefined,

@@ -37,7 +37,7 @@ export const DEFAULTS = Object.freeze({
     /** Sampling temperature. Low by default — prompts return JSON. */
     temperature: 0.0,
     /** Max output tokens per call. Sized for the largest extract batches. */
-    maxTokens: 16_000,
+    maxTokens: 15_000,
     /** Max retries per LLM call on failure (e.g. truncated JSON, transient errors). */
     maxRetries: 1,
     /** Max estimated input tokens per extract LLM call. Hits are batched up to this cap. */
@@ -78,6 +78,13 @@ export const DEFAULTS = Object.freeze({
     maxTokens: 1024,
   },
 
+  eventExtraction: {
+    /** Default model id passed to the adapter */
+    model: 'gpt-5-mini',
+    /** Sampling temperature */
+    temperature: 0.0,
+  },
+
   /** Tuning for dedupe strategies. */
   dedupe: {
     /** Similarity threshold above which two titles are treated as duplicates by `fuzzyTitle`. */
@@ -106,7 +113,7 @@ export const DEFAULTS = Object.freeze({
   /** Core logger configuration. */
   logging: {
     /** Log level: 'silent' | 'error' | 'warn' | 'info' | 'debug'. Gates console output. */
-    level: /** @type {'warn'} */ ('debug'),
+    level: /** @type {'debug'} */ ('debug'),
     /**
      * Optional file path. When set (Node only), every logger call additionally
      * appends a JSON Lines record `{ts, level, args}` to this file regardless

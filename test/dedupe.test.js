@@ -9,7 +9,7 @@ test('byId: collapses events that share a content-derived id', async () => {
   const b = makeEvent({ title: 'Same Event', source: { name: 's', url: 'https://b.example.com' } });
   // Same title/startsAt/venue → same id, even though source URLs differ.
   assert.equal(a.id, b.id);
-  const out = await byId([a, b], /** @type {any} */ ({}));
+  const { events: out } = await byId([a, b], /** @type {any} */ ({}), /** @type {any} */ ({}));
   assert.equal(out.length, 1);
 });
 
@@ -25,7 +25,7 @@ test('byId: keeps distinct events from the same source URL', async () => {
     startsAt: '2026-05-03T20:00:00+00:00',
     source: { name: 's', url: 'https://listing.example.com' },
   });
-  const out = await byId([a, b], /** @type {any} */ ({}));
+  const { events: out } = await byId([a, b], /** @type {any} */ ({}), /** @type {any} */ ({}));
   assert.equal(out.length, 2);
 });
 
@@ -42,7 +42,7 @@ test('fuzzyTitle: same-day same-city near-duplicates collapse', async () => {
     venue: { name: 'Comedy Café', city: 'Berlin' },
     source: { name: 's', url: 'https://b.example.com' },
   });
-  const out = await fuzzyTitle(0.5)([a, b], /** @type {any} */ ({}));
+  const { events: out } = await fuzzyTitle(0.5)([a, b], /** @type {any} */ ({}), /** @type {any} */ ({}));
   assert.equal(out.length, 1);
 });
 
@@ -59,7 +59,7 @@ test('fuzzyTitle: trigrams catch punctuation/spacing variants tokens miss', asyn
     startsAt: '2026-05-02T20:30:00+00:00',
     source: { name: 's', url: 'https://b.example.com' },
   });
-  const out = await fuzzyTitle(0.5)([a, b], /** @type {any} */ ({}));
+  const { events: out } = await fuzzyTitle(0.5)([a, b], /** @type {any} */ ({}), /** @type {any} */ ({}));
   assert.equal(out.length, 1);
 });
 
@@ -76,7 +76,7 @@ test('fuzzyTitle: different cities on the same day are not duplicates', async ()
     venue: { name: 'Blue Note', city: 'Munich' },
     source: { name: 's', url: 'https://b.example.com' },
   });
-  const out = await fuzzyTitle(0.85)([a, b], /** @type {any} */ ({}));
+  const { events: out } = await fuzzyTitle(0.85)([a, b], /** @type {any} */ ({}), /** @type {any} */ ({}));
   assert.equal(out.length, 2);
 });
 
@@ -91,7 +91,7 @@ test('fuzzyTitle: unrelated titles stay distinct', async () => {
     startsAt: '2026-05-02T20:00:00+00:00',
     source: { name: 's', url: 'https://b.example.com' },
   });
-  const out = await fuzzyTitle(0.85)([a, b], /** @type {any} */ ({}));
+  const { events: out } = await fuzzyTitle(0.85)([a, b], /** @type {any} */ ({}), /** @type {any} */ ({}));
   assert.equal(out.length, 2);
 });
 
@@ -106,6 +106,6 @@ test('fuzzyTitle: different days are not duplicates even with same title', async
     startsAt: '2026-05-03T20:00:00+00:00',
     source: { name: 's', url: 'https://b.example.com' },
   });
-  const out = await fuzzyTitle(0.85)([a, b], /** @type {any} */ ({}));
+  const { events: out } = await fuzzyTitle(0.85)([a, b], /** @type {any} */ ({}), /** @type {any} */ ({}));
   assert.equal(out.length, 2);
 });

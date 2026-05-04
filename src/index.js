@@ -2,15 +2,12 @@
  * Public API. See docs/architecture.md.
  */
 
-import { DEFAULTS, mergeConfig } from './core/config.js';
-import { createLogger } from './core/logger.js';
+import { createContext } from './core/context.js';
 import { runCuration } from './core/pipeline.js';
 import { recordFeedback } from './stages/feedback.js';
-import { byId, fuzzyTitle } from './strategies/dedupe/index.js';
-import { byDate, llmRank, rules } from './strategies/rank/index.js';
-import { llmExpand, templates } from './strategies/queryExpansion/index.js';
 
 export { DEFAULTS } from './core/config.js';
+export { createContext } from './core/context.js';
 export { llmRank, byDate, rules } from './strategies/rank/index.js';
 export { EventState, EVENT_STATE_VALUES } from './core/eventState.js';
 
@@ -31,7 +28,7 @@ export { EventState, EVENT_STATE_VALUES } from './core/eventState.js';
 
 /**
  * @typedef {Object} Curator
- * @property {(query: import('./core/types.js').Query, opts?: CurateOptions) => Promise<{ events: import('./core/types.js').Event[] }>} curate
+ * @property {(query: import('./core/types.js').Query, opts?: CurateOptions) => Promise<{ events: import('./core/types.js').Event[], usage: import('./core/types.js').LLMUsage }>} curate
  * @property {(ref: import('./core/types.js').SavedQueryRef, opts?: import('./core/types.js').ListShownOptions) => Promise<import('./core/types.js').Event[]>} listShown
  * @property {(input: import('./core/types.js').FeedbackInput) => Promise<void>} recordFeedback
  * @property {(opts?: import('./core/types.js').ListSavedQueriesOptions) => Promise<import('./core/types.js').SavedQuery[]>} listSavedQueries
@@ -46,17 +43,7 @@ export { EventState, EVENT_STATE_VALUES } from './core/eventState.js';
  * @returns {Promise<Curator>}
  */
 export async function createCurator(opts) {
-  const config = mergeConfig(DEFAULTS, opts.config);
-  const logger = createLogger(config.logging.level, config.logging.file);
-  const strategies = {
-    queryExpansion: opts.strategies?.queryExpansion ?? [
-      llmExpand(),
-      templates(),
-    ],
-    dedupe: opts.strategies?.dedupe ?? [byId, fuzzyTitle(config.dedupe.fuzzyTitleThreshold)],
-    rank:   opts.strategies?.rank   ?? [rules, byDate],
-  };
-
+  const ctx = createContext(opts);
   await opts.storage.init();
 
   /** @type {import('./core/types.js').Query | null} */
@@ -64,29 +51,13 @@ export async function createCurator(opts) {
 
   return {
     async curate(query, curateOpts) {
-      // Auto-attach the matching saved query so strategies can read taste settings
-      // (excludeKeywords, derivedTraits, etc.) without a second round-trip.
       const savedQuery = query.savedQuery
         ?? (await opts.storage.getSavedQuery({ city: query.city, queryText: query.queryText }));
       const enrichedQuery = savedQuery ? { ...query, savedQuery } : query;
-      /** @type {import('./core/types.js').Ctx} */
-      const ctx = {
-        llm: opts.llm,
-        search: opts.search,
-        storage: opts.storage,
-        strategies,
-        config,
-        query: enrichedQuery,
-        onProgress: curateOpts?.onProgress,
-        signal: curateOpts?.signal,
-        logger,
-      };
-      const events = await runCuration(ctx);
+      const { events, usage } = await runCuration(ctx, enrichedQuery, curateOpts);
       lastQuery = enrichedQuery;
-      // Bump last-searched timestamp on a matching saved query, if any.
-      // No-op when this query wasn't run from a saved entry.
       await opts.storage.touchSavedQuery({ city: query.city, queryText: query.queryText });
-      return { events };
+      return { events, usage };
     },
 
     async listShown(ref, listOpts) {
@@ -100,18 +71,8 @@ export async function createCurator(opts) {
       if (!ref) {
         throw new Error('recordFeedback called before any curate(); pass `ref` explicitly');
       }
-      const queryForCtx = lastQuery ?? { city: ref.city, queryText: ref.queryText, timeframe: { rolling: { days: 0 } } };
-      /** @type {import('./core/types.js').Ctx} */
-      const ctx = {
-        llm: opts.llm,
-        search: opts.search,
-        storage: opts.storage,
-        strategies,
-        config,
-        query: queryForCtx,
-        logger,
-      };
-      await recordFeedback({ ...input, ref }, ctx);
+      const queryForFeedback = lastQuery ?? { city: ref.city, queryText: ref.queryText, timeframe: { rolling: { days: 0 } } };
+      await recordFeedback({ ...input, ref }, ctx, queryForFeedback);
     },
 
     async listSavedQueries(listOpts) {

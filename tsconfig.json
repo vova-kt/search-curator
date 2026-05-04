@@ -16,6 +16,6 @@
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.js", "src/**/*.d.ts"],
-  "exclude": ["node_modules", "app", "examples", "test", "types"]
+  "include": ["src/**/*.js", "src/**/*.d.ts", "app/**/*.js", "examples/**/*.js", "eval/**/*.js", "test/**/*.js"],
+  "exclude": ["node_modules", "types", "app", "test", "eval/**/report.js", "eval/**/grid.js"]
 }

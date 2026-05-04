@@ -5,30 +5,30 @@ import { memory } from '../src/adapters/storage/memory.js';
 import { stubLLM, silentLogger } from './_helpers.js';
 import { DEFAULTS, mergeConfig } from '../src/core/config.js';
 
+const defaultQuery = {
+  city: 'Berlin',
+  queryText: 'comedy',
+  timeframe: { from: '2026-05-01', to: '2026-05-15' },
+};
+
 /**
- * @param {{ llm: import('../src/core/types.js').LLMAdapter, storage: import('../src/core/types.js').StorageAdapter, config?: Partial<import('../src/core/types.js').Config>, query?: Partial<import('../src/core/types.js').Query> }} opts
+ * @param {{ llm: import('../src/core/types.js').LLMAdapter, storage: import('../src/core/types.js').StorageAdapter, config?: Partial<import('../src/core/types.js').Config> }} opts
  * @returns {import('../src/core/types.js').Ctx}
  */
-function makeCtx({ llm, storage, config, query }) {
+function makeCtx({ llm, storage, config }) {
   return /** @type {any} */ ({
     llm,
     storage,
     search: [],
-    strategies: { queryExpansion: [], dedupe: [], filter: [], rank: [] },
+    strategies: { queryExpansion: [], dedupe: [], rank: [] },
     config: mergeConfig(DEFAULTS, config),
-    query: {
-      city: 'Berlin',
-      queryText: 'comedy',
-      timeframe: { from: '2026-05-01', to: '2026-05-15' },
-      ...query,
-    },
     logger: silentLogger,
   });
 }
 
 test('templates: returns four deterministic phrasings of (city, queryText)', async () => {
   const ctx = makeCtx({ llm: stubLLM(() => ({})), storage: memory() });
-  const out = await templates()(ctx);
+  const { queries: out } = await templates()(ctx, defaultQuery);
   assert.equal(out.length, 4);
   assert.ok(out.every((q) => q.includes('Berlin')));
   assert.ok(out.every((q) => q.includes('comedy')));
@@ -53,12 +53,12 @@ test('llmExpand: caps result to limit and persists to KV', async () => {
   await storage.init();
   const ctx = makeCtx({ llm, storage, config: { queryExpansion: { maxQueries: 3 } } });
 
-  const out = await llmExpand()(ctx);
+  const { queries: out } = await llmExpand()(ctx, defaultQuery);
   assert.equal(out.length, 3);
   assert.equal(llmCalls, 1);
 
   // Cache hit: same key, no second LLM call.
-  const out2 = await llmExpand()(ctx);
+  const { queries: out2 } = await llmExpand()(ctx, defaultQuery);
   assert.deepEqual(out2, out);
   assert.equal(llmCalls, 1);
 });
@@ -71,12 +71,13 @@ test('llmExpand: cache key changes with timeframe', async () => {
   });
   const storage = memory();
   await storage.init();
+  const ctx = makeCtx({ llm, storage });
 
-  const ctxMay = makeCtx({ llm, storage, query: { timeframe: { from: '2026-05-01', to: '2026-05-15' } } });
-  const ctxJune = makeCtx({ llm, storage, query: { timeframe: { from: '2026-06-01', to: '2026-06-15' } } });
+  const queryMay = { ...defaultQuery, timeframe: { from: '2026-05-01', to: '2026-05-15' } };
+  const queryJune = { ...defaultQuery, timeframe: { from: '2026-06-01', to: '2026-06-15' } };
 
-  await llmExpand()(ctxMay);
-  await llmExpand()(ctxJune);
+  await llmExpand()(ctx, queryMay);
+  await llmExpand()(ctx, queryJune);
   assert.equal(llmCalls, 2);
 });
 
@@ -88,7 +89,7 @@ test('llmExpand: in dev mode rethrows on LLM failure', async () => {
   await storage.init();
   const ctx = makeCtx({ llm, storage, config: { dev: true } });
 
-  await assert.rejects(() => Promise.resolve(llmExpand()(ctx)), /boom/);
+  await assert.rejects(() => Promise.resolve(llmExpand()(ctx, defaultQuery)), /boom/);
 });
 
 test('llmExpand: in prod mode falls back to templates and warns', async () => {
@@ -101,7 +102,7 @@ test('llmExpand: in prod mode falls back to templates and warns', async () => {
   let warned = false;
   ctx.logger = { error: () => {}, warn: () => { warned = true; }, info: () => {}, debug: () => {} };
 
-  const out = await llmExpand()(ctx);
+  const { queries: out } = await llmExpand()(ctx, defaultQuery);
   assert.equal(out.length, 4); // templates produces 4
   assert.ok(out.every((q) => q.includes('Berlin')));
   assert.ok(warned);
@@ -113,7 +114,7 @@ test('llmExpand: malformed LLM response (no queries field) treated as failure', 
   await storage.init();
   const ctx = makeCtx({ llm, storage, config: { dev: true } });
 
-  await assert.rejects(() => Promise.resolve(llmExpand()(ctx)), /no usable queries/);
+  await assert.rejects(() => Promise.resolve(llmExpand()(ctx, defaultQuery)), /no usable queries/);
 });
 
 test('llmExpand: defaultLimit comes from config when not overridden', async () => {
@@ -123,6 +124,6 @@ test('llmExpand: defaultLimit comes from config when not overridden', async () =
   await storage.init();
   const ctx = makeCtx({ llm, storage, config: { queryExpansion: { maxQueries: 5 } } });
 
-  const out = await llmExpand()(ctx);
+  const { queries: out } = await llmExpand()(ctx, defaultQuery);
   assert.equal(out.length, 5);
 });

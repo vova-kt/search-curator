@@ -41,7 +41,7 @@
  * @property {number} matchedN
  * @property {number} dateAcc
  * @property {number} venueAcc
- * @property {number} hallucCount
+ * @property {number} hallucination
  * @property {CorrResult} overallCorr
  * @property {CorrResult} queryIntentCorr
  */

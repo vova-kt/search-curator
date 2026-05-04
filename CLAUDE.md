@@ -38,7 +38,8 @@ The `docs/` directory is the canonical reference. Read the page that matches you
 ## Quick orientation
 
 - **Public entry**: [src/index.js](src/index.js) — `createCurator({ llm, search, storage, strategies, config })`
-- **Pipeline**: [src/core/pipeline.js](src/core/pipeline.js) calls stages in [src/stages/](src/stages/)
+- **Context factory**: [src/core/context.js](src/core/context.js) — `createContext()` builds `Ctx` (adapters + strategies + config + logger). Used by `createCurator`, eval, and tests. Query is a separate per-invocation param, not part of `Ctx`.
+- **Pipeline**: [src/core/pipeline.js](src/core/pipeline.js) — `runCuration(ctx, query, opts?)` calls stages in [src/stages/](src/stages/); returns `{ events, usage }`
 - **Types**: [src/core/types.js](src/core/types.js) — JSDoc typedefs only, no runtime
 - **Config**: [src/core/config.js](src/core/config.js) — `DEFAULTS` is the canonical, self-documenting source of truth for every tunable
 - **Logger**: [src/core/logger.js](src/core/logger.js) — levelled `ctx.logger` built from `config.logging.level`. Stages/strategies use it instead of `console.*`

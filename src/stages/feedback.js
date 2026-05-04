@@ -13,8 +13,9 @@ import { derivePreferenceTraitsPrompt } from '../prompts/derivePreferenceTraits.
  *   only consulted when `state === 'disliked'`. Empty/whitespace strings are dropped so no empty
  *   reason ever lands in storage.
  * @param {import('../core/types.js').Ctx} ctx
+ * @param {import('../core/types.js').Query} query
  */
-export async function recordFeedback(input, ctx) {
+export async function recordFeedback(input, ctx, query) {
   if (input.ids.length === 0) return;
 
   /** @type {import('../core/types.js').EventStateItem[]} */
@@ -71,9 +72,13 @@ async function deriveTraits(sq, liked, disliked, ctx) {
     })),
   });
   const resp = await ctx.llm.chat({
+    model: ctx.config.llm.model,
     system: prompt.system,
     messages: [{ role: 'user', content: prompt.user }],
     json: true,
+    temperature: ctx.config.llm.temperature,
+    maxTokens: ctx.config.llm.maxTokens,
+    maxRetries: ctx.config.llm.maxRetries,
   });
   const json = /** @type {{ traits?: string }} */ (resp.json ?? {});
   return typeof json.traits === 'string' ? json.traits : undefined;

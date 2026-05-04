@@ -17,32 +17,32 @@ const CACHE_PREFIX = 'qx:llmExpand:v2';
  * @returns {import('../../core/types.js').QueryExpansionStrategy}
  */
 export function llmExpand() {
-  return async function llmExpandStrategy(ctx) {
+  return async function llmExpandStrategy(ctx, query) {
     const cap = ctx.config.queryExpansion.maxQueries;
-    const tf = resolveTimeframe(ctx.query.timeframe, ctx.config.pipeline.defaultRollingDays);
-    const key = cacheKey(ctx.query.city, ctx.query.queryText, tf);
+    const tf = resolveTimeframe(query.timeframe, ctx.config.pipeline.defaultRollingDays);
+    const key = cacheKey(query.city, query.queryText, tf);
 
     const cached = await ctx.storage.getKV(key);
     if (cached) {
       const parsed = safeParseQueries(cached);
-      if (parsed) return parsed.slice(0, cap);
-      // A bad cache row shouldn't block — fall through to a fresh LLM call.
+      if (parsed) return { queries: parsed.slice(0, cap) };
     }
 
     try {
       const prompt = expandQueriesPrompt({
-        city: ctx.query.city,
-        queryText: ctx.query.queryText,
+        city: query.city,
+        queryText: query.queryText,
         timeframe: tf,
         limit: cap,
       });
       const resp = await ctx.llm.chat({
+        model: ctx.config.queryExpansion.model,
         system: prompt.system,
         messages: [{ role: 'user', content: prompt.user }],
         json: true,
         temperature: ctx.config.queryExpansion.temperature,
         maxTokens: ctx.config.queryExpansion.maxTokens,
-        signal: ctx.signal,
+        maxRetries: ctx.config.llm.maxRetries,
       });
       const json = /** @type {{ queries?: unknown }} */ (resp.json ?? {});
       const queries = sanitize(json.queries);
@@ -51,11 +51,11 @@ export function llmExpand() {
       }
       const sliced = queries.slice(0, cap);
       await ctx.storage.setKV(key, JSON.stringify(sliced));
-      return sliced;
+      return { queries: sliced, usage: resp.usage };
     } catch (err) {
       if (ctx.config.dev) throw err;
       ctx.logger.warn('[llmExpand] LLM failed, falling back to templates:', err instanceof Error ? err.message : err);
-      return await templates()(ctx);
+      return await templates()(ctx, query);
     }
   };
 }

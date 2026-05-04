@@ -5,8 +5,13 @@ import { DEFAULTS, mergeConfig } from '../src/core/config.js';
 import { memory } from '../src/adapters/storage/memory.js';
 import { silentLogger } from './_helpers.js';
 
+const defaultQuery = {
+  city: 'Berlin',
+  queryText: 'comedy',
+  timeframe: { from: '2026-05-01', to: '2026-05-15' },
+};
+
 /**
- * Build a minimal Ctx for the discover stage.
  * @param {{ queryExpansion: import('../src/core/types.js').QueryExpansionStrategy[], search: import('../src/core/types.js').SearchAdapter[] }} opts
  */
 function makeCtx({ queryExpansion, search }) {
@@ -14,15 +19,15 @@ function makeCtx({ queryExpansion, search }) {
     llm: /** @type {any} */ ({}),
     search,
     storage: memory(),
-    strategies: { queryExpansion, dedupe: [], filter: [], rank: [] },
+    strategies: { queryExpansion, dedupe: [], rank: [] },
     config: mergeConfig(DEFAULTS, {}),
-    query: {
-      city: 'Berlin',
-      queryText: 'comedy',
-      timeframe: { from: '2026-05-01', to: '2026-05-15' },
-    },
     logger: silentLogger,
   });
+}
+
+/** @param {string[]} qs */
+function expansion(qs) {
+  return (_ctx, _query) => ({ queries: qs });
 }
 
 test('discover: dedupes queries from multiple strategies before fan-out', async () => {
@@ -35,19 +40,18 @@ test('discover: dedupes queries from multiple strategies before fan-out', async 
       return [];
     },
   };
-  const a = () => ['Comedy Events in Berlin', 'standup Berlin'];
-  const b = () => ['comedy events in berlin', 'open mic Berlin']; // first overlaps with a (case-insensitive)
+  const a = expansion(['Comedy Events in Berlin', 'standup Berlin']);
+  const b = expansion(['comedy events in berlin', 'open mic Berlin']);
 
-  const { queries } = await discover(makeCtx({ queryExpansion: [a, b], search: [search] }));
+  const { queries } = await discover(makeCtx({ queryExpansion: [a, b], search: [search] }), defaultQuery);
 
-  // Three distinct queries (case-insensitive), in insertion order, first-seen casing wins.
   assert.deepEqual(seen, ['Comedy Events in Berlin', 'standup Berlin', 'open mic Berlin']);
   assert.deepEqual(queries, ['Comedy Events in Berlin', 'standup Berlin', 'open mic Berlin']);
 });
 
 test('discover: throws when queryExpansion is empty (misconfiguration)', async () => {
   await assert.rejects(
-    () => discover(makeCtx({ queryExpansion: [], search: [] })),
+    () => discover(makeCtx({ queryExpansion: [], search: [] }), defaultQuery),
     /no queryExpansion strategies/,
   );
 });
@@ -60,8 +64,8 @@ test('discover: collapses hits whose URLs differ only by tracking params, www, c
     'https://example.com/event/42#tickets',
     'https://example.com/event/42?utm_source=newsletter&utm_campaign=spring',
     'https://example.com/event/42?fbclid=abc&gclid=xyz&ref=twitter',
-    'http://example.com/event/42', // distinct (different scheme)
-    'https://example.com/event/42?id=7', // distinct (non-tracking param)
+    'http://example.com/event/42',
+    'https://example.com/event/42?id=7',
   ];
   const search = {
     name: 'spy',
@@ -70,12 +74,11 @@ test('discover: collapses hits whose URLs differ only by tracking params, www, c
     },
   };
   const { hits } = await discover(makeCtx({
-    queryExpansion: [() => ['q']],
+    queryExpansion: [expansion(['q'])],
     search: [search],
-  }));
+  }), defaultQuery);
 
   const urls = hits.map((h) => h.url).sort();
-  // First-seen wins for the canonical group; the other two stand alone.
   assert.deepEqual(urls, [
     'http://example.com/event/42',
     'https://example.com/event/42',
@@ -95,12 +98,12 @@ test('discover: preserves non-tracking query params and keeps the first-seen var
     },
   };
   const { hits } = await discover(makeCtx({
-    queryExpansion: [() => ['q']],
+    queryExpansion: [expansion(['q'])],
     search: [search],
-  }));
+  }), defaultQuery);
 
   assert.equal(hits.length, 2);
-  assert.equal(hits[0].title, 'first'); // first-seen variant wins for the canonical group
+  assert.equal(hits[0].title, 'first');
   assert.equal(hits[1].title, 'third');
 });
 
@@ -116,9 +119,9 @@ test('discover: unparseable URLs fall back to exact-match dedup', async () => {
     },
   };
   const { hits } = await discover(makeCtx({
-    queryExpansion: [() => ['q']],
+    queryExpansion: [expansion(['q'])],
     search: [search],
-  }));
+  }), defaultQuery);
 
   assert.deepEqual(hits.map((h) => h.title).sort(), ['a', 'c']);
 });
@@ -134,9 +137,9 @@ test('discover: a failing expansion strategy is skipped, others continue', async
     },
   };
   const failing = () => { throw new Error('strategy failed'); };
-  const ok = () => ['working query'];
+  const ok = expansion(['working query']);
 
-  await discover(makeCtx({ queryExpansion: [failing, ok], search: [search] }));
+  await discover(makeCtx({ queryExpansion: [failing, ok], search: [search] }), defaultQuery);
 
   assert.deepEqual(seen, ['working query']);
 });

@@ -22,18 +22,32 @@ export const MODEL_PRICING = Object.freeze({
 });
 
 /**
- * @typedef {{ inputCost: number, outputCost: number, totalCost: number }} CostBreakdown
+ * @typedef {{
+ *   inputCost: number,
+ *   outputCost: number,
+ *   totalCost: number,
+ *   inputTokens: number,
+ *   outputTokens: number
+ * }} CostBreakdown
  */
 
 /**
  * @param {string} model
- * @param {{ inputTokens: number, outputTokens: number }} usage
- * @returns {CostBreakdown | null}  null when the model has no known pricing
+ * @param {import("./types.js").LLMUsage[]} usage
+ * @returns {CostBreakdown}  throws when the model has no known pricing
  */
 export function calculateCost(model, usage) {
   const pricing = MODEL_PRICING[model];
-  if (!pricing) return null;
-  const inputCost  = (usage.inputTokens  / 1_000_000) * pricing.input;
-  const outputCost = (usage.outputTokens / 1_000_000) * pricing.output;
-  return { inputCost, outputCost, totalCost: inputCost + outputCost };
+  if (!pricing) throw new Error(`Unknown model: ${model}`);
+  const totalInputTokens = usage.reduce((s, u) => s + u.inputTokens, 0);
+  const totalOutputTokens = usage.reduce((s, u) => s + u.outputTokens, 0);
+  const inputCost = (totalInputTokens / 1_000_000) * pricing.input;
+  const outputCost = (totalOutputTokens / 1_000_000) * pricing.output;
+  return {
+    inputCost,
+    outputCost,
+    totalCost: inputCost + outputCost,
+    inputTokens: totalInputTokens,
+    outputTokens: totalOutputTokens,
+  };
 }

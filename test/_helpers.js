@@ -44,10 +44,9 @@ export function makeEvent(overrides = {}) {
 export function stubLLM(respond) {
   return {
     name: 'stub',
-    model: 'stub',
     async chat(req) {
       const json = await respond(req);
-      return { text: typeof json === 'string' ? json : JSON.stringify(json), json };
+      return { text: typeof json === 'string' ? json : JSON.stringify(json), json, usage: { inputTokens: 0, outputTokens: 0 } };
     },
   };
 }

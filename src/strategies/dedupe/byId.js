@@ -5,11 +5,11 @@
  */
 
 /** @type {import('../../core/types.js').Strategy} */
-export const byId = (events) => {
+export const byId = (events, _ctx, _query) => {
   /** @type {Map<string, import('../../core/types.js').Event>} */
   const seen = new Map();
   for (const e of events) {
     if (!seen.has(e.id)) seen.set(e.id, e);
   }
-  return [...seen.values()];
+  return { events: [...seen.values()] };
 };

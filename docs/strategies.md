@@ -6,13 +6,13 @@ Strategies are pluggable functions. Three kinds: `queryExpansion`, `dedupe`, `ra
 
 Pluggability without a plugin system. The pipeline stage doesn't know how many strategies are in its slot or what they do — it just iterates. That makes it trivial to compose ad-hoc chains, drop in a custom strategy for one curation, or fold an existing strategy out of the default. The chain is also stable across runs (deterministic order), which matters for debuggability.
 
-Event strategies (`dedupe` / `rank`) are `(events, ctx) => Promise<Event[]> | Event[]` — they may drop or reorder, may not fabricate. Query-expansion strategies are different: `(ctx) => Promise<string[]> | string[]` — they produce search queries from `ctx.query`, not events. Type definitions live in [src/core/types.js](../src/core/types.js).
+All strategies receive `query` as a separate parameter (not embedded in `ctx`) and return structured results. Event strategies (`dedupe` / `rank`) are `(events, ctx, query) => StrategyResult` where `StrategyResult = { events, usage? }` — they may drop or reorder, may not fabricate. Query-expansion strategies are `(ctx, query) => QueryExpansionResult` where `QueryExpansionResult = { queries, usage? }`. The `usage` field carries LLM token counts when the strategy calls the LLM; stages aggregate usage across their strategy chains. Type definitions live in [src/core/types.js](../src/core/types.js).
 
 A strategy that needs configuration exposes a factory:
 
 ```js
 export function fuzzyTitle({ threshold = 0.85 } = {}) {
-  return async function fuzzyTitleStrategy(events, ctx) { /* ... */ };
+  return async function fuzzyTitleStrategy(events, ctx, query) { /* ... */ };
 }
 ```
 
@@ -47,7 +47,7 @@ The dedupe stage *also* consults `ctx.storage.getShownIds(ids, ref)` and drops e
 
 Default in `createCurator`: `[rules, byDate]`. The example TUI opts into `[rules, llmRank]` so saved-query guidance and rationales actually flow through.
 
-- **`rules`** — reads `excludeKeywords`, `excludeVenues`, `price`, `freeOnly` from `ctx.query.savedQuery` (auto-loaded by `curate()` if a matching saved query exists). Drops events; preserves order. Pure, no LLM.
+- **`rules`** — reads `excludeKeywords`, `excludeVenues`, `price`, `freeOnly` from `query.savedQuery` (auto-loaded by `curate()` if a matching saved query exists). Drops events; preserves order. Pure, no LLM.
 
   Keyword matching is morphology-aware via [Snowball](http://snowball.tartarus.org/) stemming: title and description are tokenized on Unicode letters and each token is stemmed (Cyrillic → `russian`, otherwise → `english`); keywords are stemmed the same way and matched as space-bounded substrings of the stemmed haystack. So `excludeKeywords: ['концерт']` drops `'концерта'` / `'концертов'` / `'на концерте'`, and `['show']` drops `'shows'` / `'showing'`. Multi-word keywords (`'open mic'`) match contiguously after stemming. Venue matching stays exact (post-`normalize`) — proper nouns shouldn't be stemmed.
 

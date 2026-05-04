@@ -22,6 +22,7 @@ test('createCurator: full pipeline returns events from stub adapters', async () 
             startsAt: futureDate(),
             venue: { name: 'Test Café', city: 'Berlin' },
             source: { name: 'stub', url: 'https://example.com/listing' },
+            score: { queryIntent: 8, location: 10, dates: 10, languageIntent: 10, quality: 5 },
           },
         ],
       };
@@ -60,6 +61,7 @@ test('createCurator: cross-session dedupe only drops events the consumer marked 
           startsAt: futureDate(),
           venue: { name: 'Café', city: 'Berlin' },
           source: { name: 'stub', url: 'https://x.example.com' },
+          score: { queryIntent: 8, location: 10, dates: 10, languageIntent: 10, quality: 5 },
         },
       ],
     };
@@ -106,6 +108,7 @@ test('createCurator: listShown returns previously shown events for a saved query
         startsAt: futureDate(),
         venue: { name: 'V', city: 'Berlin' },
         source: { name: 'stub', url: 'https://x.example.com' },
+        score: { queryIntent: 8, location: 10, dates: 10, languageIntent: 10, quality: 5 },
       },
     ],
   }));
@@ -134,7 +137,7 @@ test('createCurator: recordFeedback persists likes per saved query and refreshes
     if (req.system.includes('extract structured upcoming events')) {
       return {
         events: [
-          { title: 'A', startsAt: futureDate(), venue: { name: 'V', city: 'Berlin' }, source: { name: 'stub', url: 'https://x.example.com' } },
+          { title: 'A', startsAt: futureDate(), venue: { name: 'V', city: 'Berlin' }, source: { name: 'stub', url: 'https://x.example.com' }, score: { queryIntent: 8, location: 10, dates: 10, languageIntent: 10, quality: 5 } },
         ],
       };
     }

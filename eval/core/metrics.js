@@ -19,6 +19,7 @@ import { detectExpectedLanguage } from './queryHeuristics.js';
  * @property {string} title
  * @property {string} [deduplicationKey]
  * @property {string} startsAt
+ * @property {import("../../src/core/types.js").EventScore} score
  * @property {{ name: string, city?: string }} venue
  * @property {{ free?: boolean }} [price]
  */

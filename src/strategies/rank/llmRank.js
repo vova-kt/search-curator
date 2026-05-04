@@ -13,10 +13,10 @@ import { EventState } from '../../core/eventState.js';
 import { rankByPreferencePrompt } from '../../prompts/rankByPreference.js';
 
 /** @type {import('../../core/types.js').Strategy} */
-export const llmRank = async (events, ctx) => {
-  if (events.length <= 1) return events;
-  const { city, queryText, guidance } = ctx.query;
-  const sq = ctx.query.savedQuery;
+export const llmRank = async (events, ctx, query) => {
+  if (events.length <= 1) return { events };
+  const { city, queryText, guidance } = query;
+  const sq = query.savedQuery;
   const derivedTraits = sq?.derivedTraits;
 
   const states = await ctx.storage.getEventStates({ city, queryText });
@@ -25,7 +25,7 @@ export const llmRank = async (events, ctx) => {
 
   // Skip the call when there's nothing for the LLM to act on.
   if (liked.length === 0 && disliked.length === 0 && !derivedTraits && !guidance) {
-    return events;
+    return { events };
   }
 
   const candidates = events.map((e) => ({
@@ -53,15 +53,18 @@ export const llmRank = async (events, ctx) => {
   });
 
   const resp = await ctx.llm.chat({
+    model: ctx.config.llm.model,
     system: prompt.system,
     messages: [{ role: 'user', content: prompt.user }],
     json: true,
-    signal: ctx.signal,
+    temperature: ctx.config.llm.temperature,
+    maxTokens: ctx.config.llm.maxTokens,
+    maxRetries: ctx.config.llm.maxRetries,
   });
 
   const json = /** @type {{ ranked?: Array<{ id: string, rationale?: string }> }} */ (resp.json ?? {});
   const ranked = json.ranked;
-  if (!Array.isArray(ranked) || ranked.length === 0) return events;
+  if (!Array.isArray(ranked) || ranked.length === 0) return { events, usage: resp.usage };
 
   /** @type {Map<string, import('../../core/types.js').Event>} */
   const byId = new Map(events.map((e) => [e.id, e]));
@@ -74,5 +77,5 @@ export const llmRank = async (events, ctx) => {
     out.push({ ...e, rationale: r.rationale });
   }
   // Events left in `byId` were omitted by the LLM — they are dropped.
-  return out;
+  return { events: out, usage: resp.usage };
 };

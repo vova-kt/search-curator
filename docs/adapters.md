@@ -24,7 +24,7 @@ Built-ins:
 
 Built-in:
 
-- **openai** ([src/adapters/llm/openai.js](../src/adapters/llm/openai.js)) — wraps the `openai` SDK. JSON mode via `response_format: { type: 'json_object' }`.
+- **openai** ([src/adapters/llm/openai.js](../src/adapters/llm/openai.js)) — wraps the `openai` SDK. JSON mode via `response_format: { type: 'json_object' }`. Factory takes only `{ apiKey, baseURL }` — all behavior params (`temperature`, `maxTokens`, `maxRetries`, `reasoningEffort`) flow through `LLMRequest`, not the factory. Usage (`{ inputTokens, outputTokens }`) is always returned.
 
 ### Storage
 

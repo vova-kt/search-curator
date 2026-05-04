@@ -8,14 +8,17 @@ import { ProgressStage, ProgressPhase } from '../core/progress.js';
 
 /**
  * @param {import('../core/types.js').Ctx} ctx
- * @returns {Promise<{ hits: import('../core/types.js').SearchHit[], queries: string[] }>}
+ * @param {import('../core/types.js').Query} query
+ * @param {import('../core/types.js').RunOptions} [opts]
+ * @returns {Promise<{ hits: import('../core/types.js').SearchHit[], queries: string[], usage: import('../core/types.js').LLMUsage }>}
  */
-export async function discover(ctx) {
-  const emit = ctx.onProgress ?? (() => {});
+export async function discover(ctx, query, opts) {
+  const emit = opts?.onProgress ?? (() => {});
+  const signal = opts?.signal;
   const log = ctx.logger;
 
   emit({ stage: ProgressStage.QUERIES, phase: ProgressPhase.START });
-  const queries = await buildQueries(ctx);
+  const { queries, usage } = await buildQueries(ctx, query);
   emit({ stage: ProgressStage.QUERIES, phase: ProgressPhase.DONE, count: queries.length });
   log.debug('[discover] queries', queries);
 
@@ -31,10 +34,9 @@ export async function discover(ctx) {
         try {
           return await adapter.search(q, {
             maxResults: ctx.config.search.maxResultsPerAdapter,
-            signal: ctx.signal,
+            signal,
           });
         } catch (err) {
-          // One adapter or query failing should not kill discovery.
           log.warn(`[discover] ${adapter.name} failed for "${q}":`, err instanceof Error ? err.message : err);
           return [];
         } finally {
@@ -48,34 +50,40 @@ export async function discover(ctx) {
   const deduped = dedupeByUrl(all);
   emit({ stage: ProgressStage.SEARCH, phase: ProgressPhase.DONE, count: deduped.length });
   log.debug(`[discover] ${all.length} raw hits → ${deduped.length} after url-dedupe`);
-  return { hits: deduped, queries };
+  return { hits: deduped, queries, usage };
 }
 
 /**
  * @param {import('../core/types.js').Ctx} ctx
- * @returns {Promise<string[]>}
+ * @param {import('../core/types.js').Query} query
+ * @returns {Promise<{ queries: string[], usage: import('../core/types.js').LLMUsage }>}
  */
-async function buildQueries(ctx) {
+async function buildQueries(ctx, query) {
   const strategies = ctx.strategies.queryExpansion;
   if (!strategies || strategies.length === 0) {
     throw new Error('discover: no queryExpansion strategies configured');
   }
-  const settled = await Promise.allSettled(strategies.map(async (s) => s(ctx)));
+  const settled = await Promise.allSettled(strategies.map(async (s) => s(ctx, query)));
   /** @type {Map<string, string>} */
   const seen = new Map();
+  let totalInput = 0;
+  let totalOutput = 0;
   for (const r of settled) {
     if (r.status === 'rejected') {
-      // Mirrors the per-adapter error policy: a single strategy failure should not kill discovery.
       ctx.logger.warn('[discover] queryExpansion strategy failed:', r.reason instanceof Error ? r.reason.message : r.reason);
       continue;
     }
-    for (const q of r.value ?? []) {
+    if (r.value.usage) {
+      totalInput += r.value.usage.inputTokens;
+      totalOutput += r.value.usage.outputTokens;
+    }
+    for (const q of r.value.queries ?? []) {
       const key = q.trim().toLowerCase();
       if (!key || seen.has(key)) continue;
       seen.set(key, q.trim());
     }
   }
-  return [...seen.values()];
+  return { queries: [...seen.values()], usage: { inputTokens: totalInput, outputTokens: totalOutput } };
 }
 
 const TRACKING_PARAM_PREFIXES = ['utm_'];

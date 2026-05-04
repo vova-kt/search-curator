@@ -5,14 +5,15 @@ import { memory } from '../src/adapters/storage/memory.js';
 import { EventState } from '../src/core/eventState.js';
 import { makeEvent, stubLLM } from './_helpers.js';
 
+const defaultQuery = { city: 'Berlin', queryText: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' } };
+
 /**
  * @param {Partial<import('../src/core/types.js').Ctx> & { storage?: import('../src/core/types.js').StorageAdapter }} extra
  * @returns {import('../src/core/types.js').Ctx}
  */
 function ctx(extra = {}) {
   return /** @type {any} */ ({
-    query: { city: 'Berlin', queryText: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' } },
-    config: {},
+    config: { llm: { model: 'stub', temperature: 0, maxTokens: 1000, maxRetries: 0 } },
     storage: extra.storage ?? memory(),
     ...extra,
   });
@@ -30,7 +31,7 @@ test('llmRank: skips the LLM when there is no preference signal and no guidance'
   const a = makeEvent({ title: 'A' });
   const b = makeEvent({ title: 'B', source: { name: 's', url: 'https://b.example.com' } });
   const storage = await freshStorage();
-  const out = await llmRank([a, b], ctx({ llm, storage }));
+  const { events: out } = await llmRank([a, b], ctx({ llm, storage }), defaultQuery);
   assert.equal(called, 0);
   assert.deepEqual(out.map((e) => e.id), [a.id, b.id]);
 });
@@ -50,10 +51,8 @@ test('llmRank: guidance alone triggers the LLM and drops omitted events', async 
     };
   });
   const storage = await freshStorage();
-  const out = await llmRank([a, b, c], ctx({ llm, storage, query: {
-    city: 'Berlin', queryText: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' },
-    guidance: 'prefer intimate venues',
-  } }));
+  const query = { ...defaultQuery, guidance: 'prefer intimate venues' };
+  const { events: out } = await llmRank([a, b, c], ctx({ llm, storage }), query);
   assert.deepEqual(out.map((e) => e.id), [c.id, a.id]);
   assert.equal(out[0].rationale, 'fits guidance well today');
   assert.match(captured.messages[0].content, /<guidance>prefer intimate venues<\/guidance>/);
@@ -74,7 +73,7 @@ test('llmRank: liked junction rows trigger the LLM with a populated liked list',
     captured = req;
     return { ranked: [{ id: a.id, rationale: 'matches taste' }] };
   });
-  const out = await llmRank([a, b], ctx({ llm, storage }));
+  const { events: out } = await llmRank([a, b], ctx({ llm, storage }), defaultQuery);
   assert.deepEqual(out.map((e) => e.id), [a.id]);
   assert.match(captured.messages[0].content, /Past Liked/);
 });
@@ -84,10 +83,7 @@ test('llmRank: empty/invalid response falls back to all events in original order
   const b = makeEvent({ title: 'B', source: { name: 's', url: 'https://b.example.com' } });
   const llm = stubLLM(() => ({ ranked: [] }));
   const storage = await freshStorage();
-  const out = await llmRank([a, b], ctx({
-    llm,
-    storage,
-    query: { city: 'Berlin', queryText: 'comedy', timeframe: { from: '2026-05-01', to: '2026-05-31' }, guidance: 'x' },
-  }));
+  const query = { ...defaultQuery, guidance: 'x' };
+  const { events: out } = await llmRank([a, b], ctx({ llm, storage }), query);
   assert.deepEqual(out.map((e) => e.id), [a.id, b.id]);
 });

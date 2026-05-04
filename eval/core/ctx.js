@@ -1,105 +1,60 @@
 /**
- * Build a minimal `Ctx` for invoking pipeline stages directly from an eval
- * script. Stages only read the fields they need, so the eval ctx omits
- * `search`, `storage`, and `strategies` — none of those are used by `extract`.
- *
- * If a future eval script targets a stage that requires more (e.g. dedupe
- * needs `strategies.dedupe`), extend this builder rather than constructing
- * the ctx inline.
+ * Build a minimal Ctx via createContext for eval scripts. Stages are called
+ * directly with query as a separate param — see docs/pipeline.md.
  */
 
 import { openai } from '../../src/adapters/llm/openai.js';
-import { mergeConfig, DEFAULTS } from '../../src/core/config.js';
-import { createLogger, LogLevel } from '../../src/core/logger.js';
+import { createContext, DEFAULTS } from '../../src/index.js';
+import { mergeConfig } from '../../src/core/config.js';
 
-/**
- * Wrap an LLMAdapter so every `chat` call gets a fixed temperature unless the
- * caller already set one. Lets eval scripts pin temperature to 0 for less
- * run-to-run drift without modifying `src/`.
- *
- * @param {import('../../src/core/types.js').LLMAdapter} llm
- * @param {number} temperature
- * @returns {import('../../src/core/types.js').LLMAdapter}
- */
-function withTemperature(llm, temperature) {
-  return {
-    name: llm.name,
-    model: llm.model,
-    chat: (req) => llm.chat({ ...req, temperature: req.temperature ?? temperature }),
-  };
-}
-
-/**
- * @param {import('../../src/core/types.js').LLMAdapter} llm
- * @param {'low'|'medium'|'high'} effort
- * @returns {import('../../src/core/types.js').LLMAdapter}
- */
-function withReasoningEffort(llm, effort) {
-  return {
-    name: llm.name,
-    model: llm.model,
-    chat: (req) => llm.chat({ ...req, reasoningEffort: req.reasoningEffort ?? effort }),
-  };
-}
+/** @type {import('../../src/core/types.js').StorageAdapter} */
+export const nullStorage = /** @type {any} */ ({
+  init: async () => {},
+  close: async () => {},
+  getKV: async () => null,
+  setKV: async () => {},
+});
 
 /**
  * @param {{
- *   query: { city: string, queryText: string, timeframe: { from: string, to: string } },
- *   model: string,
  *   apiKey: string,
- *   temperature?: number,
- *   reasoningEffort?: 'low'|'medium'|'high',
- *   logLevel?: string,
+ *   qeMaxQueries?: number,
+ *   qeModel?: string,
+ *   eeModel?: string,
+ *   eeTemperature?: number,
+ *   logLevel?: 'silent'|'error'|'warn'|'info'|'debug',
  * }} opts
+ * @returns {import('../../src/core/types.js').Ctx}
  */
-export function buildExtractCtx({ query, model, apiKey, temperature = 0, reasoningEffort, logLevel = LogLevel.WARN }) {
-  const baseLlm = openai({ apiKey, model });
-  let llm = withTemperature(baseLlm, temperature);
-  if (reasoningEffort) llm = withReasoningEffort(llm, reasoningEffort);
-  const config = mergeConfig(DEFAULTS, { llm: { model }, logging: { level: logLevel, file: null } });
-  const logger = createLogger(logLevel, null);
-  return {
-    llm,
-    config,
-    logger,
-    query,
-  };
-}
-
-/**
- * Build a minimal `Ctx` for invoking query-expansion strategies from an eval
- * script. A null storage is always wired so `llmExpand` cache misses silently
- * skip caching — eval fixtures are re-fetched manually when stale. Pass
- * `{ apiKey, model }` to enable `llmExpand`; omit them for `templates` which
- * needs no LLM. `limit`/`temperature` override `config.queryExpansion`.
- *
- * @param {{
- *   query: { city: string, queryText: string, timeframe: { from: string, to: string } },
- *   apiKey?: string,
- *   model?: string,
- *   llm?: import('../../src/core/types.js').LLMAdapter,
- *   limit?: number,
- *   temperature?: number,
- *   logLevel?: string,
- * }} opts
- */
-export function buildExpandCtx({ query, apiKey, model, llm: externalLlm, limit, temperature, logLevel }) {
-  const config = mergeConfig(DEFAULTS, {
-    ...(model ? { llm: { model } } : {}),
-    queryExpansion: {
-      ...(limit != null ? { defaultLimit: limit } : {}),
-      ...(temperature != null ? { temperature } : {}),
-    },
-    logging: { level: logLevel, file: null },
+export function createEvalContext({
+  apiKey,
+  qeMaxQueries,
+  qeModel,
+  eeModel,
+  eeTemperature,
+  logLevel,
+}) {
+  return createContext({
+    llm: openai({ apiKey }),
+    storage: nullStorage,
+    search: [],
+    strategies: { queryExpansion: [], dedupe: [], rank: [] },
+    config: mergeConfig(DEFAULTS, {
+      queryExpansion: {
+        ...DEFAULTS.queryExpansion,
+        ...(qeMaxQueries != null ? { maxQueries: qeMaxQueries } : {}),
+        ...(qeModel != null ? { model: qeModel } : {}),
+      },
+      eventExtraction: {
+        ...DEFAULTS.eventExtraction,
+        ...(eeModel != null ? { model: eeModel } : {}),
+        ...(eeTemperature != null ? { temperature: eeTemperature } : {}),
+      },
+      logging: {
+        ...DEFAULTS.logging,
+        ...(logLevel != null ? { level: logLevel } : {}),
+        file: null,
+      },
+    }),
   });
-  const logger = createLogger(logLevel, null);
-  const nullStorage = { getKV: async () => null, setKV: async () => {} };
-  const base = { config, logger, query, storage: nullStorage };
-  if (externalLlm) {
-    return { ...base, llm: externalLlm };
-  }
-  if (apiKey && model) {
-    return { ...base, llm: withTemperature(openai({ apiKey, model }), 0) };
-  }
-  return base;
 }

@@ -1,6 +1,5 @@
 import { resolve } from 'node:path';
 import { extract } from '../../../src/stages/extract.js';
-import { buildExtractCtx } from '../../core/ctx.js';
 import {
   loadSearchFixture,
   loadGoldenFixture,
@@ -17,33 +16,33 @@ import {
 } from '../../core/metrics.js';
 import { overallScore } from '../../../src/core/scoring.js';
 import { DEFAULTS } from '../../../src/index.js';
+import { createEvalContext } from '../../core/ctx.js';
 
 /** @typedef {import('./types.js').SlugResult} SlugResult */
 
 /**
  * @param {string} slug
  * @param {string} apiKey
- * @param {{ model: string, temperature: number, reasoningEffort: 'low'|'medium'|'high'|null }} config
+ * @param {{ model: string, temperature: number }} config
  * @returns {Promise<SlugResult>}
  */
 export async function runOne(slug, apiKey, config) {
   const fixture = loadSearchFixture(slug);
   const goldenFixture = loadGoldenFixture(slug);
 
-  const ctx = buildExtractCtx({
-    query: {
-      city: fixture.query.city,
-      queryText: fixture.query.queryText,
-      timeframe: fixture.timeframe,
-    },
-    model: config.model,
+  const query = {
+    city: fixture.query.city,
+    queryText: fixture.query.queryText,
+    timeframe: fixture.timeframe,
+  };
+  const ctx = createEvalContext({
     apiKey,
-    temperature: config.temperature,
-    reasoningEffort: config.reasoningEffort,
+    eeModel: config.model,
+    eeTemperature: config.temperature,
   });
 
   const t0 = Date.now();
-  const events = await extract(fixture.hits, ctx);
+  const { events } = await extract(fixture.hits, ctx, query);
   const elapsedMs = Date.now() - t0;
 
   const promptPath = resolve(

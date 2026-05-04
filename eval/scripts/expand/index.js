@@ -16,8 +16,6 @@
  */
 
 import { resolve } from 'node:path';
-import { openai } from '../../../src/adapters/llm/openai.js';
-import { withTracking } from '../../../src/adapters/llm/tracking.js';
 import { calculateCost } from '../../../src/core/pricing.js';
 import { requireEnv } from '../../core/env.js';
 import { gitShaOf } from '../../core/runs.js';
@@ -29,7 +27,6 @@ import { renderGridReport } from './grid.js';
 /** @typedef {import('./types.js').ExpandConfig} ExpandConfig */
 /** @typedef {import('./types.js').Variation} Variation */
 /** @typedef {import('./types.js').VariationResult} VariationResult */
-
 
 /* ------------------------------------------------------------------ */
 /*  Grid — edit to sweep across model / temperature / limit            */
@@ -94,7 +91,6 @@ const configs = [
   },
 ];
 
-
 /* ------------------------------------------------------------------ */
 /*  Main                                                               */
 /* ------------------------------------------------------------------ */
@@ -108,7 +104,9 @@ try {
   const isGrid = GRID.length > 1;
 
   if (isGrid) {
-    console.log(`expand grid eval — ${GRID.length} variations × ${configs.length} configs = ${GRID.length * configs.length} LLM calls\n`);
+    console.log(
+      `expand grid eval — ${GRID.length} variations × ${configs.length} configs = ${GRID.length * configs.length} LLM calls\n`,
+    );
   } else {
     console.log(`expand eval — ${configs.length} config(s)\n`);
   }
@@ -118,8 +116,6 @@ try {
 
   for (const variation of GRID) {
     const { model, temperature, limit } = variation;
-    const tracker = withTracking(openai({ apiKey, model }));
-
     if (isGrid) {
       process.stdout.write(`  ${model} t=${temperature} l=${limit} ...`);
     }
@@ -129,7 +125,7 @@ try {
       configs.map(async (cfg) => {
         try {
           return await runOne(cfg, {
-            llm: tracker.llm,
+            apiKey,
             model,
             temperature,
             limit,
@@ -137,42 +133,40 @@ try {
             writeRunRecord: !isGrid,
           });
         } catch (err) {
-          if (!isGrid) throw err;
-          return /** @type {import('./types.js').RunResult} */ ({
-            config: cfg,
-            slug: `${model}-${cfg.query.queryText}-${cfg.query.city}`,
-            queries: [],
-            golden: null,
-            elapsedMs: 0,
-            report: null,
-            runPath: null,
-            error: err instanceof Error ? err.message : String(err),
-          });
+          throw err;
         }
       }),
     );
     const elapsedMs = Date.now() - start;
-    const usage = tracker.usage();
-    const cost = calculateCost(model, {
-      inputTokens: usage.totalInput,
-      outputTokens: usage.totalOutput,
-    });
+    const usage = results.map((r) => r.usage);
+    const cost = calculateCost(model, usage.filter((u) => u != null));
 
     if (isGrid) {
       const errors = results.filter((r) => r.error).length;
-      console.log(` ${(elapsedMs / 1000).toFixed(1)}s ${errors ? errors + ' errors' : 'ok'}`);
+      console.log(
+        ` ${(elapsedMs / 1000).toFixed(1)}s ${errors ? errors + ' errors' : 'ok'}`,
+      );
     }
 
-    variationResults.push({ variation, results, elapsedMs, usage, cost });
+    variationResults.push({
+      variation,
+      results,
+      elapsedMs,
+      cost,
+    });
   }
 
   if (!isGrid) {
-    const { variation, results, usage, cost } = variationResults[0];
+    const { variation, results, cost } = variationResults[0];
     for (const r of results) {
       console.log(`=== ${r.slug} ===`);
-      console.log(`model: ${variation.model}  city: ${r.config.query.city}  query: "${r.config.query.queryText}"  timeframe: ${r.config.query.timeframe.from}→${r.config.query.timeframe.to}`);
-      console.log(`expanded to ${r.queries.length} queries in ${(r.elapsedMs / 1000).toFixed(1)}s`);
-      console.log('\n' + r.report.text + '\n');
+      console.log(
+        `model: ${variation.model}  city: ${r.config.query.city}  query: "${r.config.query.queryText}"  timeframe: ${r.config.query.timeframe.from}→${r.config.query.timeframe.to}`,
+      );
+      console.log(
+        `expanded to ${r.queries.length} queries in ${(r.elapsedMs / 1000).toFixed(1)}s`,
+      );
+      console.log('\n' + r.report?.text + '\n');
       console.log(`run saved: ${r.runPath}`);
       if (!r.golden) {
         console.log(
@@ -189,14 +183,16 @@ try {
       console.log(buildAggregateReport(results) + '\n');
     }
 
-    console.log(`usage: ${usage.totalInput} input + ${usage.totalOutput} output tokens, ${usage.calls} calls`);
+    console.log(`usage: ${cost.inputTokens} input + ${cost.outputTokens} output tokens`);
     if (cost) {
-      console.log(`cost: $${cost.totalCost.toFixed(4)} (input: $${cost.inputCost.toFixed(4)}, output: $${cost.outputCost.toFixed(4)})`);
+      console.log(
+        `cost: $${cost.totalCost.toFixed(4)} (input: $${cost.inputCost.toFixed(4)}, output: $${cost.outputCost.toFixed(4)})`,
+      );
     }
   } else {
     console.log('\n' + renderGridReport(variationResults, configs.length));
   }
 } catch (err) {
-  console.error(err instanceof Error ? err.stack ?? err.message : err);
+  console.error(err instanceof Error ? (err.stack ?? err.message) : err);
   process.exit(1);
 }

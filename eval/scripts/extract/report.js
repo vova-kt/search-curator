@@ -197,7 +197,7 @@ export function aggregate(evaluated) {
     matchedN,
     dateAcc,
     venueAcc,
-    hallucCount,
+    hallucination: hallucCount,
     overallCorr: scoreCorrelation(pooledGoldenOverall, pooledCandOverall),
     queryIntentCorr: scoreCorrelation(pooledGoldenQI, pooledCandQI),
   };
@@ -213,7 +213,7 @@ function printAggregate(evalCount, a) {
   console.log(ratio('precision', a.tp, a.candidateCount, `f1=${a.f1.toFixed(3)}`));
   console.log(ratio('date within ±1 day', a.dateOk, a.matchedN));
   console.log(ratio('venue match', a.venueOk, a.matchedN));
-  console.log(`  hallucination signal          ${a.hallucCount}`);
+  console.log(`  hallucination signal          ${a.hallucination}`);
 
   console.log(section('score quality', 0));
   printCorrBlock('overall (weighted)', a.overallCorr);
@@ -343,9 +343,9 @@ function printInsights(evaluated, a) {
     }
   }
 
-  if (a.hallucCount > 0) {
+  if (a.hallucination > 0) {
     ins.push(
-      `${a.hallucCount} event(s) flagged as hallucinations (<40% title-token overlap with source pages) — ` +
+      `${a.hallucination} event(s) flagged as hallucinations (<40% title-token overlap with source pages) — ` +
         `consider strengthening grounding instructions ("only extract events explicitly named in the provided text").`,
     );
   }
@@ -385,7 +385,7 @@ function printInsights(evaluated, a) {
     a.precision >= 0.95 &&
     a.dateAcc >= 0.95 &&
     a.venueAcc >= 0.95 &&
-    a.hallucCount === 0 &&
+    a.hallucination === 0 &&
     scoreOk
   ) {
     ins.push(

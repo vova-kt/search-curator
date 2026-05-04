@@ -1,5 +1,0 @@
-<component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="run-expand" type="NodeJSConfigurationType" node-parameters="--env-file=./../../../.env.dev" path-to-js-file="index.js" working-dir="$PROJECT_DIR$/eval/scripts/expand">
-    <method v="2" />
-  </configuration>
-</component>

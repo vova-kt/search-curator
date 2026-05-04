@@ -11,7 +11,18 @@ import { violationCount, sum, avg, queryList } from './helpers.js';
 /** @typedef {import('./types.js').RunResult} RunResult */
 
 /**
- * @typedef {{ text: string, data: Record<string, unknown> }} ExpandReport
+ * @typedef {{
+ *   diversity: ReturnType<typeof queryDiversity>,
+ *   constraintCompliance: ReturnType<typeof constraintCompliance>,
+ *   languageCoverage: ReturnType<typeof expectedLanguageCoverage>,
+ *   monthYearCount: number,
+ *   badTimeRefCount: number,
+ *   goldenCoverage?: ReturnType<typeof goldenQueryCoverage>,
+ * }} ExpandReportData
+ */
+
+/**
+ * @typedef {{ text: string, data: ExpandReportData }} ExpandReport
  */
 
 /**
@@ -54,7 +65,7 @@ export function buildReport({ candidate, golden, expectedLanguages }) {
       : 'specific-date/day-of-week refs: none (good)',
     queryList('output queries', candidate),
     cov && cov.unmatchedGolden.length > 0
-      ? queryList('unmatched golden (missed phrasings)', cov.unmatchedGolden.map((i) => golden[i]))
+      ? queryList('unmatched golden (missed phrasings)', cov.unmatchedGolden.map((i) => /** @type {string[]} */ (golden)[i]))
       : null,
   ];
 
@@ -83,7 +94,7 @@ export function buildAggregateReport(results) {
   const withGolden = results.filter((r) => r.report?.data.goldenCoverage);
   const avgCoverage = withGolden.length === 0
     ? null
-    : avg(withGolden.map((r) => r.report.data.goldenCoverage.coverage));
+    : avg(withGolden.map((r) => r.report?.data.goldenCoverage?.coverage ?? 0));
 
   const avgDiversity = avg(results.map((r) => r.report?.data.diversity.avgDistance ?? 0));
   const minDiversity = Math.min(...results.map((r) => r.report?.data.diversity.minDistance ?? 1));

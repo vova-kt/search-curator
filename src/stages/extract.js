@@ -24,23 +24,27 @@ import { ProgressStage, ProgressPhase } from '../core/progress.js';
 /**
  * @typedef {Object} ExtractOpts
  * @property {string[]} [expandedQueries]
+ * @property {AbortSignal} [signal]
+ * @property {import('../core/types.js').ProgressListener} [onProgress]
  */
 
 /**
  * @param {import('../core/types.js').SearchHit[]} hits
  * @param {import('../core/types.js').Ctx} ctx
+ * @param {import('../core/types.js').Query} query
  * @param {ExtractOpts} [opts]
- * @returns {Promise<import('../core/types.js').Event[]>}
+ * @returns {Promise<{ events: import('../core/types.js').Event[], usage: import('../core/types.js').LLMUsage }>}
  */
-export async function extract(hits, ctx, opts) {
+export async function extract(hits, ctx, query, opts) {
   const timeframe = resolveTimeframe(
-    ctx.query.timeframe,
+    query.timeframe,
     ctx.config.pipeline.defaultRollingDays,
   );
   const maxWorkers = ctx.config.pipeline.maxWorkers;
   const batchTokenCap = ctx.config.llm.batchInputTokens;
   const charsPerToken = ctx.config.llm.charsPerToken;
-  const emit = ctx.onProgress ?? (() => {});
+  const emit = opts?.onProgress ?? (() => {});
+  const signal = opts?.signal;
 
   const expandedQueries = opts?.expandedQueries ?? [];
   const pages = preparePages(hits);
@@ -52,6 +56,8 @@ export async function extract(hits, ctx, opts) {
 
   /** @type {import('../core/types.js').Event[]} */
   const out = [];
+  let totalInput = 0;
+  let totalOutput = 0;
   let cursor = 0;
   let processed = hits.length - pages.length;
   if (processed > 0) {
@@ -69,11 +75,13 @@ export async function extract(hits, ctx, opts) {
       const i = cursor++;
       const batch = batches[i];
       try {
-        const events = await extractFromBatch(batch, ctx, timeframe, expandedQueries);
+        const result = await extractFromBatch(batch, ctx, query, timeframe, expandedQueries, signal);
         log.debug(
-          `[extract] batch ${i + 1}/${batches.length} (${batch.length} pages) → ${events.length} events`,
+          `[extract] batch ${i + 1}/${batches.length} (${batch.length} pages) → ${result.events.length} events`,
         );
-        out.push(...events);
+        out.push(...result.events);
+        totalInput += result.usage.inputTokens;
+        totalOutput += result.usage.outputTokens;
       } catch (err) {
         log.warn(
           `[extract] batch failed (${batch.length} pages):`,
@@ -100,7 +108,7 @@ export async function extract(hits, ctx, opts) {
       `[extract] post-filter: ${before} → ${cleaned.length} (${before - cleaned.length} dropped: dupes or out-of-range)`,
     );
   }
-  return cleaned;
+  return { events: cleaned, usage: { inputTokens: totalInput, outputTokens: totalOutput } };
 }
 
 /**
@@ -151,14 +159,16 @@ function batchPages(pages, batchTokenCap, charsPerToken) {
 /**
  * @param {PreparedPage[]} batch
  * @param {import('../core/types.js').Ctx} ctx
+ * @param {import('../core/types.js').Query} query
  * @param {{ from: string, to: string }} timeframe
  * @param {string[]} expandedQueries
- * @returns {Promise<import('../core/types.js').Event[]>}
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{ events: import('../core/types.js').Event[], usage: import('../core/types.js').LLMUsage }>}
  */
-async function extractFromBatch(batch, ctx, timeframe, expandedQueries) {
+async function extractFromBatch(batch, ctx, query, timeframe, expandedQueries, signal) {
   const prompt = extractEventsPrompt({
-    city: ctx.query.city,
-    queryText: ctx.query.queryText,
+    city: query.city,
+    queryText: query.queryText,
     timeframe,
     expandedQueries,
     pages: batch.map(({ hit, pageText }) => ({
@@ -169,10 +179,14 @@ async function extractFromBatch(batch, ctx, timeframe, expandedQueries) {
   });
 
   const resp = await ctx.llm.chat({
+    model: ctx.config.eventExtraction.model,
     system: prompt.system,
     messages: [{ role: 'user', content: prompt.user }],
     json: true,
-    signal: ctx.signal,
+    temperature: ctx.config.eventExtraction.temperature,
+    maxTokens: ctx.config.llm.maxTokens,
+    maxRetries: ctx.config.llm.maxRetries,
+    signal,
   });
 
   const json =
@@ -187,6 +201,7 @@ async function extractFromBatch(batch, ctx, timeframe, expandedQueries) {
   for (const r of raws) {
     if (!r.title || !r.startsAt || !r.venue?.name || !r.venue?.city) continue;
     if (!r.source?.name || !r.source?.url) continue;
+    if (!r.score) continue;
     events.push({
       id: eventId({ title: r.title, startsAt: r.startsAt, venue: r.venue }),
       title: r.title,
@@ -204,7 +219,7 @@ async function extractFromBatch(batch, ctx, timeframe, expandedQueries) {
         : {}),
     });
   }
-  return events;
+  return { events, usage: resp.usage };
 }
 
 /**

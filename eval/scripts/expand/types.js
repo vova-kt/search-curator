@@ -15,8 +15,12 @@
 
 /**
  * @typedef {{
- *   config: ExpandConfig, slug: string, queries: string[],
- *   golden: { queries: string[] } | null, elapsedMs: number,
+ *   config: ExpandConfig,
+ *   slug: string,
+ *   queries: string[],
+ *   usage: import('../../../src/core/types.js').LLMUsage | null,
+ *   golden: { queries: string[] } | null,
+ *   elapsedMs: number,
  *   report: import('./report.js').ExpandReport | null,
  *   runPath: string | null,
  *   error?: string,
@@ -28,7 +32,6 @@
  *   variation: Variation,
  *   results: RunResult[],
  *   elapsedMs: number,
- *   usage: import('../../../src/adapters/llm/tracking.js').UsageStats,
- *   cost: import('../../../src/core/pricing.js').CostBreakdown | null,
+ *   cost: import('../../../src/core/pricing.js').CostBreakdown,
  * }} VariationResult
  */

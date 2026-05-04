@@ -3,6 +3,6 @@
  */
 
 /** @type {import('../../core/types.js').Strategy} */
-export const byDate = (events) => {
-  return [...events].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+export const byDate = (events, _ctx, _query) => {
+  return { events: [...events].sort((a, b) => a.startsAt.localeCompare(b.startsAt)) };
 };

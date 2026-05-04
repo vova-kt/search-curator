@@ -22,7 +22,7 @@ import { templates, llmExpand } from '../../src/strategies/queryExpansion/index.
 import { requireEnv } from '../core/env.js';
 import { makeSlug } from '../core/slug.js';
 import { writeSearchFixture } from '../core/fixtures.js';
-import { buildExpandCtx } from '../core/ctx.js';
+import { createEvalContext } from '../core/ctx.js';
 import { DEFAULTS } from '../../src/index.js';
 import { dedupeByUrl } from '../../src/stages/discover.js';
 
@@ -77,12 +77,15 @@ for (const { query, city } of queries) {
     const slug = makeSlug({ queryText: query, city, days: shared.days, from: timeframe.from });
 
     let searchQueries;
+    const expandQuery = { city, queryText: query, timeframe };
     if (expandStrategy) {
-      const expandCtx = buildExpandCtx({
-        query: { city, queryText: query, timeframe },
-        ...(shared.expand === 'llm' ? { apiKey: requireEnv('OPENAI_API_KEY'), model: shared.model } : {}),
+      const expandCtx = createEvalContext({
+        apiKey: requireEnv('OPENAI_API_KEY'),
+        qeMaxQueries: shared.maxResults,
+        qeModel: shared.model,
       });
-      searchQueries = await expandStrategy(expandCtx);
+      const result = await expandStrategy(expandCtx, expandQuery);
+      searchQueries = result.queries;
       console.log(`[${i}/${queries.length}] ${label}: expanded to ${searchQueries.length} queries via ${shared.expand}`);
     } else {
       searchQueries = [`${query} ${city}`];

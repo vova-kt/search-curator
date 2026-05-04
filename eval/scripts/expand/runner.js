@@ -2,34 +2,35 @@ import { llmExpand } from '../../../src/strategies/queryExpansion/index.js';
 import { loadExpandGoldenFixture } from '../../core/fixtures.js';
 import { writeRun } from '../../core/runs.js';
 import { RunKind } from '../../core/runKind.js';
-import { buildExpandCtx } from '../../core/ctx.js';
 import { buildReport } from './report.js';
-
-/** @typedef {import('./types.js').ExpandConfig} ExpandConfig */
-/** @typedef {import('./types.js').RunResult} RunResult */
+import { createEvalContext } from '../../core/ctx.js';
 
 /**
- * @param {ExpandConfig} cfg
+ * @param {import("./types.js").ExpandConfig} cfg
  * @param {{
- *   llm: import('../../../src/core/types.js').LLMAdapter,
- *   model: string, temperature: number, limit: number,
- *   promptSha: string, writeRunRecord: boolean,
+ *   apiKey: string,
+ *   model: string,
+ *   temperature: number,
+ *   limit: number,
+ *   promptSha: string,
+ *   writeRunRecord: boolean,
  * }} opts
- * @returns {Promise<RunResult>}
+ * @returns {Promise<import("./types.js").RunResult>}
  */
-export async function runOne(cfg, { llm, model, temperature, limit, promptSha, writeRunRecord }) {
+export async function runOne(
+  cfg,
+  { apiKey, model, temperature, limit, promptSha, writeRunRecord },
+) {
   const slug = `${model}-${cfg.query.queryText}-${cfg.query.city}`;
   const golden = loadExpandGoldenFixture(slug);
 
   const start = Date.now();
-  const ctx = buildExpandCtx({
-    query: cfg.query,
-    llm,
-    model,
-    limit,
-    temperature,
+  const ctx = createEvalContext({
+    apiKey: apiKey,
+    qeModel: model,
+    qeMaxQueries: limit,
   });
-  const queries = await llmExpand()(ctx);
+  const { queries, usage } = await llmExpand()(ctx, cfg.query);
   const elapsedMs = Date.now() - start;
 
   const report = buildReport({
@@ -50,5 +51,14 @@ export async function runOne(cfg, { llm, model, temperature, limit, promptSha, w
     });
   }
 
-  return { config: cfg, slug, queries, golden, elapsedMs, report, runPath };
+  return {
+    config: cfg,
+    slug,
+    queries,
+    usage: usage ?? { inputTokens: 0, outputTokens: 0 },
+    golden,
+    elapsedMs,
+    report,
+    runPath,
+  };
 }

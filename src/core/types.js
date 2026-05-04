@@ -56,7 +56,7 @@
  * @property {EventPrice} [price]
  * @property {string} [deduplicationKey] // strict: "artist, venue, dd-mm-yy" lowercase English
  * @property {string} [reason]           // LLM's reasoning about relevancy score
- * @property {EventScore} [score]        // multi-dimensional 0–10 relevancy scores
+ * @property {EventScore} score          // multi-dimensional 0–10 relevancy scores
  * @property {string} [rationale]        // rank-stage "why this matches" line
  * @property {string} [firstSeenAt]
  * @property {string} [lastSeenAt]
@@ -153,12 +153,20 @@
  */
 
 /**
+ * @typedef {Object} LLMUsage
+ * @property {number} inputTokens
+ * @property {number} outputTokens
+ */
+
+/**
  * @typedef {Object} LLMRequest
+ * @property {string} model
  * @property {string} system
  * @property {LLMMessage[]} messages
  * @property {boolean} [json]
  * @property {number} [temperature]
  * @property {number} [maxTokens]
+ * @property {number} [maxRetries]
  * @property {'low'|'medium'|'high'} [reasoningEffort]
  * @property {AbortSignal} [signal]
  */
@@ -167,13 +175,12 @@
  * @typedef {Object} LLMResponse
  * @property {string} text
  * @property {unknown} [json]
- * @property {{ inputTokens: number, outputTokens: number }} [usage]
+ * @property {LLMUsage} usage
  */
 
 /**
  * @typedef {Object} LLMAdapter
  * @property {string} name
- * @property {string} model
  * @property {(req: LLMRequest) => Promise<LLMResponse>} chat
  */
 
@@ -226,11 +233,23 @@
  */
 
 /**
- * @typedef {(events: Event[], ctx: Ctx) => Promise<Event[]> | Event[]} Strategy
+ * @typedef {Object} StrategyResult
+ * @property {Event[]} events
+ * @property {LLMUsage} [usage]
  */
 
 /**
- * @typedef {(ctx: Ctx) => Promise<string[]> | string[]} QueryExpansionStrategy
+ * @typedef {Object} QueryExpansionResult
+ * @property {string[]} queries
+ * @property {LLMUsage} [usage]
+ */
+
+/**
+ * @typedef {(events: Event[], ctx: Ctx, query: Query) => Promise<StrategyResult> | StrategyResult} Strategy
+ */
+
+/**
+ * @typedef {(ctx: Ctx, query: Query) => Promise<QueryExpansionResult> | QueryExpansionResult} QueryExpansionStrategy
  */
 
 /**
@@ -246,9 +265,10 @@
  * @typedef {Object} Config
  * @property {boolean} dev
  * @property {{ model: string, temperature: number, maxTokens: number, maxRetries: number, batchInputTokens: number, charsPerToken: number }} llm
+ * @property {{ model: string, temperature: number }} eventExtraction
  * @property {{ maxResultsPerAdapter: number, timeoutMs: number }} search
  * @property {{ maxEvents: number, defaultRollingDays: number, maxWorkers: number }} pipeline
- * @property {{ maxQueries: number, temperature: number, maxTokens: number }} queryExpansion
+ * @property {{ model: string, maxQueries: number, temperature: number, maxTokens: number }} queryExpansion
  * @property {{ fuzzyTitleThreshold: number }} dedupe
  * @property {{ deriveTraits: boolean, traitsRefreshThreshold: number }} preferences
  * @property {{ weights: ScoreWeights }} scoring
@@ -280,15 +300,18 @@
  */
 
 /**
+ * @typedef {Object} RunOptions
+ * @property {AbortSignal} [signal]
+ * @property {ProgressListener} [onProgress]
+ */
+
+/**
  * @typedef {Object} Ctx
  * @property {LLMAdapter} llm
  * @property {SearchAdapter[]} search
  * @property {StorageAdapter} storage
  * @property {Strategies} strategies
  * @property {Config} config
- * @property {Query} query
- * @property {AbortSignal} [signal]
- * @property {ProgressListener} [onProgress]
  * @property {import('./logger.js').Logger} logger
  */
 

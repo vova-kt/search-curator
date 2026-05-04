@@ -10,14 +10,14 @@ import { normalize } from '../../core/identity.js';
  * @returns {import('../../core/types.js').Strategy}
  */
 export function fuzzyTitle(threshold) {
-  return function fuzzyTitleStrategy(events) {
+  return function fuzzyTitleStrategy(events, _ctx, _query) {
     /** @type {import('../../core/types.js').Event[]} */
     const kept = [];
     for (const e of events) {
       const dup = kept.find((k) => isSameDay(k, e) && sameCity(k, e) && titleSim(k.title, e.title) >= threshold);
       if (!dup) kept.push(e);
     }
-    return kept;
+    return { events: kept };
   };
 }
 

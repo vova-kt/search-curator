@@ -30,8 +30,8 @@ export function renderGridReport(all, configCount) {
       avgLang.toFixed(3).padStart(8),
       String(totalViol).padStart(11),
       String(totalBad).padStart(8),
-      String(v.usage.totalInput).padStart(9),
-      String(v.usage.totalOutput).padStart(9),
+      String(v.cost.inputTokens).padStart(9),
+      String(v.cost.outputTokens).padStart(9),
       costStr.padStart(9),
       (v.elapsedMs / 1000).toFixed(1).padStart(7) + 's' + errSuffix,
     ].join('');
@@ -39,8 +39,8 @@ export function renderGridReport(all, configCount) {
 
   const totalCost = all.reduce((s, v) => s + (v.cost?.totalCost ?? 0), 0);
   const totalTime = all.reduce((s, v) => s + v.elapsedMs, 0);
-  const totalIn = all.reduce((s, v) => s + v.usage.totalInput, 0);
-  const totalOut = all.reduce((s, v) => s + v.usage.totalOutput, 0);
+  const totalIn = all.reduce((s, v) => s + v.cost.inputTokens, 0);
+  const totalOut = all.reduce((s, v) => s + v.cost.outputTokens, 0);
 
   return [
     `expand grid eval — ${all.length} variations × ${configCount} configs\n`,
@@ -77,7 +77,7 @@ function renderInsights(all) {
   const best = scored[0];
   const cheapest = scored.reduce((a, b) => (a.v.cost?.totalCost ?? Infinity) < (b.v.cost?.totalCost ?? Infinity) ? a : b);
 
-  const tag = (s) => `${s.v.variation.model} t=${s.v.variation.temperature} l=${s.v.variation.limit}`;
+  const tag = (/** @type {{ v: VariationResult }} */ s) => `${s.v.variation.model} t=${s.v.variation.temperature} l=${s.v.variation.limit}`;
 
   const lines = [
     'insights',

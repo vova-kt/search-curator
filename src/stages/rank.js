@@ -5,19 +5,27 @@
 /**
  * @param {import('../core/types.js').Event[]} events
  * @param {import('../core/types.js').Ctx} ctx
- * @returns {Promise<import('../core/types.js').Event[]>}
+ * @param {import('../core/types.js').Query} query
+ * @returns {Promise<{ events: import('../core/types.js').Event[], usage: import('../core/types.js').LLMUsage }>}
  */
-export async function rank(events, ctx) {
+export async function rank(events, ctx, query) {
   const log = ctx.logger;
   let current = events;
+  let totalInput = 0;
+  let totalOutput = 0;
   for (const strategy of ctx.strategies.rank) {
     const before = current.length;
     try {
-      current = await strategy(current, ctx);
+      const result = await strategy(current, ctx, query);
+      current = result.events;
+      if (result.usage) {
+        totalInput += result.usage.inputTokens;
+        totalOutput += result.usage.outputTokens;
+      }
       log.debug(`[rank] ${strategy.name || 'strategy'}: ${before} → ${current.length}`);
     } catch (err) {
       log.warn(`[rank] strategy failed:`, err instanceof Error ? err.message : err);
     }
   }
-  return current;
+  return { events: current, usage: { inputTokens: totalInput, outputTokens: totalOutput } };
 }

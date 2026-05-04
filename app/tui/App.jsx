@@ -88,7 +88,7 @@ export default function App({ dry, logFile }) {
   const buildCurator = async (keys) => {
     const llm = dry
       ? stubLLM()
-      : openai({ apiKey: keys.openaiApiKey, model: keys.openaiModel, maxRetries: DEFAULTS.llm.maxRetries });
+      : openai({ apiKey: keys.openaiApiKey });
     const search = dry ? [stubSearch()] : [tavily({ apiKey: keys.tavilyApiKey })];
     const storage = dry ? memory() : sqlite({ path: keys.dbPath });
     // The TUI opts into LLM rank so saved-query guidance and 5-word

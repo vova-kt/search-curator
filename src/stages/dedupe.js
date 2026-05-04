@@ -6,26 +6,32 @@
 /**
  * @param {import('../core/types.js').Event[]} events
  * @param {import('../core/types.js').Ctx} ctx
- * @returns {Promise<import('../core/types.js').Event[]>}
+ * @param {import('../core/types.js').Query} query
+ * @returns {Promise<{ events: import('../core/types.js').Event[], usage: import('../core/types.js').LLMUsage }>}
  */
-export async function dedupe(events, ctx) {
+export async function dedupe(events, ctx, query) {
   const log = ctx.logger;
   let current = events;
+  let totalInput = 0;
+  let totalOutput = 0;
   for (const strategy of ctx.strategies.dedupe) {
     const before = current.length;
     try {
-      current = await strategy(current, ctx);
+      const result = await strategy(current, ctx, query);
+      current = result.events;
+      if (result.usage) {
+        totalInput += result.usage.inputTokens;
+        totalOutput += result.usage.outputTokens;
+      }
       log.debug(`[dedupe] ${strategy.name || 'strategy'}: ${before} → ${current.length}`);
     } catch (err) {
       log.warn(`[dedupe] strategy failed:`, err instanceof Error ? err.message : err);
     }
   }
-  // Cross-session: drop ids already shown to (or rated by) the user under this saved query.
-  // Events sitting in storage in only the FOUND state remain eligible to surface again.
-  const ref = { city: ctx.query.city, queryText: ctx.query.queryText };
+  const ref = { city: query.city, queryText: query.queryText };
   const shown = await ctx.storage.getShownIds(current.map((e) => e.id), ref);
-  if (shown.size === 0) return current;
+  if (shown.size === 0) return { events: current, usage: { inputTokens: totalInput, outputTokens: totalOutput } };
   const out = current.filter((e) => !shown.has(e.id));
   log.debug(`[dedupe] cross-session: dropped ${current.length - out.length} already-shown events`);
-  return out;
+  return { events: out, usage: { inputTokens: totalInput, outputTokens: totalOutput } };
 }
