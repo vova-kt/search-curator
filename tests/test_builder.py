@@ -14,12 +14,13 @@ from events_curator.auth import LocalAuthenticator, TelegramAuthenticator
 from events_curator.config import (
     AppConfig,
     AuthSettings,
+    EmbeddingSettings,
     LLMSettings,
     SearchSettings,
     StorageSettings,
 )
 from events_curator.embed import UnconfiguredEmbedder
-from events_curator.enums import AuthScheme, LLMProvider, SearchEngineKind
+from events_curator.enums import AuthScheme, EmbedderKind, LLMProvider, SearchEngineKind
 from events_curator.llm import UnconfiguredLLM
 from events_curator.models import Principal, SavedQuery, UserId
 from events_curator.pipeline import (
@@ -75,8 +76,27 @@ def test_build_authenticator_api_token_unwired() -> None:
         build_authenticator(config)
 
 
-def test_build_embedder_is_unconfigured() -> None:
-    assert isinstance(build_embedder(AppConfig()), UnconfiguredEmbedder)
+def test_build_embedder_bge_default() -> None:
+    pytest.importorskip("sentence_transformers")  # the `embed` extra
+    from events_curator.embed import BgeEmbedder  # noqa: PLC0415
+
+    assert isinstance(build_embedder(AppConfig()), BgeEmbedder)
+
+
+def test_build_embedder_openai_with_key() -> None:
+    pytest.importorskip("openai")  # the `llm` extra
+    from events_curator.embed import OpenAIEmbedder  # noqa: PLC0415
+
+    config = AppConfig(
+        llm=LLMSettings(api_key="sk-test"),
+        embedding=EmbeddingSettings(kind=EmbedderKind.OPENAI, model="text-embedding-3-small"),
+    )
+    assert isinstance(build_embedder(config), OpenAIEmbedder)
+
+
+def test_build_embedder_openai_unconfigured_without_key() -> None:
+    config = AppConfig(embedding=EmbeddingSettings(kind=EmbedderKind.OPENAI))
+    assert isinstance(build_embedder(config), UnconfiguredEmbedder)
 
 
 def test_build_llm_unconfigured_without_key() -> None:

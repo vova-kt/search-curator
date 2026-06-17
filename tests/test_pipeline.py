@@ -4,6 +4,7 @@ unknown queries raise, and feedback is folded into the per-query profile."""
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 
 import pytest
@@ -14,6 +15,7 @@ from events_curator.enums import (
     DedupDecision,
     FeedbackKind,
     SearchEngineKind,
+    Stage,
 )
 from events_curator.expand import IdentityExpander
 from events_curator.merge import RRFMerger
@@ -165,6 +167,20 @@ async def test_run_unknown_query() -> None:
     pipeline, _, _ = await _pipeline_with_query(UserId("u1"))
     with pytest.raises(UnknownSavedQueryError):
         await pipeline.run(new_saved_query_id(), _principal(UserId("u1")))
+
+
+async def test_run_logs_each_stage(caplog: pytest.LogCaptureFixture) -> None:
+    pipeline, query, _ = await _pipeline_with_query(UserId("u1"))
+    with caplog.at_level(logging.DEBUG, logger="events_curator.stage"):
+        await pipeline.run(query.id, _principal(UserId("u1")))
+
+    logged = {record.name for record in caplog.records}
+    for stage in Stage:
+        assert f"events_curator.stage.{stage.value}" in logged
+    # Different levels by default: milestones at INFO, detail at DEBUG.
+    levels = {record.levelno for record in caplog.records}
+    assert logging.INFO in levels
+    assert logging.DEBUG in levels
 
 
 async def test_record_feedback_updates_profile() -> None:

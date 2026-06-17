@@ -4,6 +4,10 @@ The six stages and the feedback path. Each is a `Protocol` in its own module; th
 orchestrator (`pipeline/orchestrator.py`) only knows the protocols. What follows
 is *why* each stage looks the way it does and what's real vs. stubbed today.
 
+The orchestrator logs each stage under a per-stage logger
+(`events_curator.stage.<name>`), milestones at `INFO` and detail at `DEBUG`, so
+verbosity is tunable one stage at a time — see [deployment.md](deployment.md#logging).
+
 ## expand — `expand/`
 
 Turn one saved query into the concrete web queries to run. The variant that makes
@@ -97,9 +101,10 @@ Shipped today: `ThresholdDeduper` is real — blocking + two-threshold similarit
 the survivorship/provenance logic all run without any extra. It drives an
 `Embedder` (semantic signal) and an `LLMClient` (the judge) that the builder picks
 via `build_embedder` / `build_llm`: the judge is `OpenAIChat` once a key + the `llm`
-extra are present, while no concrete embedder ships yet, so a live run still reaches
-an Unconfigured placeholder and raises a pointer to the extra to wire — the same
-shape as the search backend. The prompt/parse and matching contracts live in
+extra are present, and the embedder defaults to the local bge-small `BgeEmbedder`
+(extra `embed`) with `OpenAIEmbedder` as the API alternative — falling back to an
+Unconfigured placeholder only when the chosen backend isn't installed/keyed. The
+prompt/parse and matching contracts live in
 dependency-free helpers (`dedup/_judge.py`, `dedup/_match.py`, `dedup/_golden.py`),
 unit-tested without the network.
 

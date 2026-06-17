@@ -64,7 +64,9 @@ they're dispatched concurrently (rule 5). The whole path is wired through the
 orchestrator, which enforces ownership before the learner ever runs.
 
 Shipped today: both stages are real. They drive the shared `Embedder` and
-`LLMClient` ports, which default to the Unconfigured placeholders — so a live run
-raises with a pointer to the `embed`/`llm` extra until real adapters are wired.
-`OpenAIChat` (`llm/`, extra `llm`) is the concrete `LLMClient`, re-exported lazily
-from the module door like `search.OpenAIWebSearch`.
+`LLMClient` ports. The embedder defaults to the local bge-small `BgeEmbedder`
+(`embed/`, extra `embed`), with `OpenAIEmbedder` as the API alternative; the
+`LLMClient` is `OpenAIChat` (`llm/`, extra `llm`) once a key is set. Both are
+re-exported lazily from their module doors like `search.OpenAIWebSearch`, and the
+builder falls back to an Unconfigured placeholder (a clear pointer to the extra to
+wire) when the chosen backend isn't installed or keyed.

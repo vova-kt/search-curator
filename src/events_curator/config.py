@@ -7,6 +7,7 @@ swept in eval without touching code.
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 
 from pydantic import BaseModel, Field
@@ -16,6 +17,8 @@ from events_curator.enums import (
     AuthScheme,
     EmbedderKind,
     LLMProvider,
+    LogLevel,
+    NoisyLogger,
     SearchEngineKind,
 )
 
@@ -67,6 +70,15 @@ class ServerSettings(BaseModel):
     scheduler_tick_seconds: int = 300
 
 
+class LoggingSettings(BaseModel):
+    """The baseline log level applied at app startup by `setup_logging`. Individual
+    loggers (e.g. a single pipeline stage, `events_curator.stage.<name>`) can be
+    dialed independently at runtime via `logging.getLogger(...).setLevel(...)`."""
+
+    level: LogLevel = LogLevel.INFO
+    format: str = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
+
+
 class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -82,9 +94,28 @@ class AppConfig(BaseSettings):
     storage: StorageSettings = Field(default_factory=StorageSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
 
 @lru_cache(maxsize=1)
 def get_config() -> AppConfig:
     """Process-wide config singleton."""
     return AppConfig()
+
+
+def setup_logging(
+    config: AppConfig | None = None, *, level_override: LogLevel | None = None
+) -> None:
+    """Initialize root logging for an app entrypoint — call once at startup.
+
+    `level_override` beats the configured level (the Streamlit console forces
+    DEBUG regardless of `.env`). `force=True` re-applies the handler so repeated
+    calls — e.g. Streamlit re-running the script on each interaction — don't stack
+    duplicate handlers. Noisy third-party loggers are pinned to WARNING so their
+    chatter doesn't follow the root level down to DEBUG.
+    """
+    config = config or get_config()
+    level = level_override or config.logging.level
+    logging.basicConfig(level=level.value, format=config.logging.format, force=True)
+    for noisy in NoisyLogger:
+        logging.getLogger(noisy.value).setLevel(LogLevel.WARNING.value)

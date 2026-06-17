@@ -59,3 +59,24 @@ class AuthScheme(StrEnum):
 class RunMode(StrEnum):
     LIVE = "live"  # real network calls, real persistence
     EVAL = "eval"  # fixtures and golden comparisons, no side effects
+
+
+class LogLevel(StrEnum):
+    """Standard logging thresholds; members map to `logging`'s level names so a
+    value passes straight to `setLevel` / `basicConfig`."""
+
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+
+class NoisyLogger(StrEnum):
+    """Third-party loggers `setup_logging` pins below the root level so their
+    chatter (asyncio's selector messages, httpx's per-request lines) doesn't
+    flood when the app baseline is turned down to DEBUG. Mirrors the per-logger
+    sections in `logging.ini` that cover the ad-hoc-script path."""
+
+    HTTPX = "httpx"
+    ASYNCIO = "asyncio"

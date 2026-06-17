@@ -415,23 +415,13 @@ name = "events-curator"
 version = "0.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiogram" },
+    { name = "openai" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "streamlit" },
-]
-
-[package.optional-dependencies]
-bot = [
-    { name = "aiogram" },
-]
-embed = [
     { name = "sentence-transformers" },
-]
-llm = [
-    { name = "openai" },
-]
-store = [
     { name = "sqlite-vec" },
+    { name = "streamlit" },
 ]
 
 [package.dev-dependencies]
@@ -445,15 +435,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiogram", marker = "extra == 'bot'", specifier = ">=3.7" },
-    { name = "openai", marker = "extra == 'llm'", specifier = ">=1.40" },
+    { name = "aiogram", specifier = ">=3.7" },
+    { name = "openai", specifier = ">=1.40" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-settings", specifier = ">=2.3" },
-    { name = "sentence-transformers", marker = "extra == 'embed'", specifier = ">=3.0" },
-    { name = "sqlite-vec", marker = "extra == 'store'", specifier = ">=0.1.1" },
+    { name = "sentence-transformers", specifier = ">=3.0" },
+    { name = "sqlite-vec", specifier = ">=0.1.1" },
     { name = "streamlit", specifier = ">=1.58.0" },
 ]
-provides-extras = ["llm", "embed", "store", "bot"]
 
 [package.metadata.requires-dev]
 dev = [

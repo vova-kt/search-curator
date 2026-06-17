@@ -1,0 +1,38 @@
+# Streamlit configuration for the events-curator operator console.
+# Streamlit reads this file when the app is launched from the project root
+# (`streamlit run src/events_curator/apps/streamlit_app.py`). The docker-compose
+# `ui` service additionally passes --server.port / --server.address on the CLI,
+# which override the matching [server] values below.
+#
+# NOTE: this file governs only Streamlit's own runtime. Application logging is
+# configured separately by `setup_logging` (config.py) / logging.ini — see the
+# [logger] section at the bottom for the distinction.
+
+[server]
+# Allowed values:
+# - "auto"     : Streamlit will attempt to use the watchdog module, and
+#                falls back to polling if watchdog isn't available.
+# - "watchdog" : Force Streamlit to use the watchdog module.
+# - "poll"     : Force Streamlit to always use polling.
+# - "none"     : Streamlit will not watch files.
+fileWatcherType = "watchdog"
+
+# Run unattended: don't try to open a browser or prompt for an email. Required
+# when the app runs in Docker.
+headless = true
+
+# Interface/port to bind. docker-compose overrides both via CLI flags; set here
+# so a bare local `streamlit run` matches the container.
+address = "0.0.0.0"
+port = 8501
+
+[browser]
+# A private single-operator tool — don't send usage telemetry.
+gatherUsageStats = false
+
+[logger]
+# Streamlit's *internal* log level (its server, file-watcher, and script-runner
+# logs) — NOT the application's. The pipeline logs through the stdlib `logging`
+# stack set up by `setup_logging` (config.py) + logging.ini, independently of
+# this value.
+level = "info"

@@ -10,10 +10,12 @@ scoped to the recurrent search, not the user.
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 
 from events_curator.auth import ensure_owner
 from events_curator.dedup import Deduper
+from events_curator.enums import Stage
 from events_curator.expand import Expander
 from events_curator.feedback import PreferenceLearner
 from events_curator.merge import Merger
@@ -27,6 +29,11 @@ from events_curator.models import (
 from events_curator.rank import Ranker
 from events_curator.search import SearchEngine
 from events_curator.storage import Storage
+
+# One logger per stage (`events_curator.stage.<name>`) so an operator can tune the
+# verbosity of a single stage independently of the rest.
+_STAGE_LOG = {stage: logging.getLogger(f"events_curator.stage.{stage.value}") for stage in Stage}
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -57,12 +64,22 @@ class CurationPipeline:
         if query is None:
             raise UnknownSavedQueryError(saved_query_id)
         ensure_owner(principal, query)
+        _LOG.info("run saved query %s (owner %s)", query.id, principal.user_id)
 
+        _STAGE_LOG[Stage.EXPAND].debug("expanding %r", query.text)
         expanded = await self._stages.expander.expand(query)
+        _STAGE_LOG[Stage.EXPAND].info("expanded to %d query(ies)", len(expanded.queries))
+
         # Rule 5: every expanded query is searched concurrently.
+        _STAGE_LOG[Stage.SEARCH].debug("searching %d expanded query(ies)", len(expanded.queries))
         per_query = await asyncio.gather(*[self._stages.search.search(q) for q in expanded.queries])
+        _STAGE_LOG[Stage.SEARCH].info("returned %d result list(s)", len(per_query))
+
         merged = self._stages.merger.merge(per_query)
+        _STAGE_LOG[Stage.MERGE].info("fused to %d candidate(s)", len(merged))
+
         await self._storage.results.add_raw(merged)
+        _STAGE_LOG[Stage.STORE].debug("persisted %d raw candidate(s)", len(merged))
 
         outcomes = await self._stages.deduper.reconcile(merged, self._storage.results)
         canonical_ids = [
@@ -70,19 +87,34 @@ class CurationPipeline:
             for o in outcomes
             if o.canonical_search_result_id is not None
         ]
+        _STAGE_LOG[Stage.DEDUP].info(
+            "reconciled %d candidate(s) -> %d canonical", len(outcomes), len(canonical_ids)
+        )
+
         await self._storage.results.link_results(query.id, canonical_ids)
+        _STAGE_LOG[Stage.STORE].debug(
+            "linked %d canonical to query %s", len(canonical_ids), query.id
+        )
 
         results = await self._storage.results.results_for_query(query.id)
         profile = await self._storage.preferences.get(query.id) or PreferenceProfile(
             saved_query_id=query.id
         )
-        return await self._stages.ranker.rank(results, profile, query=query)
+        ranked = await self._stages.ranker.rank(results, profile, query=query)
+        _STAGE_LOG[Stage.RANK].info("ranked %d result(s)", len(ranked))
+        return ranked
 
     async def record_feedback(self, feedback: Feedback, principal: Principal) -> PreferenceProfile:
         query = await self._storage.queries.get(feedback.saved_query_id)
         if query is None:
             raise UnknownSavedQueryError(feedback.saved_query_id)
         ensure_owner(principal, query)
+        _LOG.info(
+            "feedback %s on result %s (query %s)",
+            feedback.kind.value,
+            feedback.canonical_search_result_id,
+            feedback.saved_query_id,
+        )
         return await self._stages.learner.record(
             feedback,
             feedback_store=self._storage.feedback,

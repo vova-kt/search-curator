@@ -4,10 +4,13 @@ real PreferenceRanker, and the real ProfileUpdater over the in-memory store.
 
 The adapters those stages drive — the web-search backend, the LLM client, and the
 embedder — are chosen from config by the `build_search_backend`, `build_llm`, and
-`build_embedder` factories. Each returns the real OpenAI adapter when it's actually
-usable (an API key is set and the `llm` extra is installed) and otherwise the
-matching `Unconfigured*` placeholder, which raises with a pointer to what to wire
-next. So a default, keyless run still reaches the placeholder and stops there.
+`build_embedder` factories. The search backend and LLM return the real OpenAI
+adapter once it's usable (an API key is set and the `llm` extra is installed); the
+embedder defaults to the local bge-small `SentenceTransformer` (extra `embed`) and
+can instead use the OpenAI embeddings API. When the selected backend isn't usable
+each factory falls back to the matching `Unconfigured*` placeholder, which raises
+with a pointer to what to wire next — so a default, keyless run reaches the
+web-search placeholder and stops there before any later stage runs.
 
 Three more config-driven factories live here so every UI wires the same way:
 `build_storage` picks the persistent SQLite store (or the in-memory store for
@@ -23,7 +26,7 @@ from events_curator.auth import Authenticator, LocalAuthenticator, TelegramAuthe
 from events_curator.config import AppConfig, get_config
 from events_curator.dedup import ThresholdDeduper
 from events_curator.embed import Embedder, UnconfiguredEmbedder
-from events_curator.enums import AuthScheme, LLMProvider, SearchEngineKind
+from events_curator.enums import AuthScheme, EmbedderKind, LLMProvider, SearchEngineKind
 from events_curator.expand import IdentityExpander
 from events_curator.feedback import ProfileUpdater
 from events_curator.llm import LLMClient, UnconfiguredLLM
@@ -49,11 +52,25 @@ def _openai_ready(config: AppConfig) -> bool:
 
 
 def build_embedder(config: AppConfig) -> Embedder:
-    """The embedder for the configured `EmbedderKind`. No concrete embedder ships
-    yet, so this returns `UnconfiguredEmbedder` until a bge-small (extra `embed`) or
-    API adapter is added and selected here by kind."""
-    del config
-    return UnconfiguredEmbedder()
+    """The embedder for the configured `EmbedderKind`: the local bge-small
+    `SentenceTransformer` (`BGE_SMALL`, extra `embed`) or OpenAI's embeddings API
+    (`OPENAI`, extra `llm`, reusing the `llm` key). Falls back to
+    `UnconfiguredEmbedder` when the selected backend isn't usable — the `embed`
+    extra missing for bge, or no key/`llm` extra for OpenAI — so an unconfigured run
+    reaches the placeholder and stops with a pointer to what to wire next."""
+    match config.embedding.kind:
+        case EmbedderKind.BGE_SMALL:
+            if importlib.util.find_spec("sentence_transformers") is None:
+                return UnconfiguredEmbedder()
+            from events_curator.embed import BgeEmbedder  # noqa: PLC0415  (keeps `embed` optional)
+
+            return BgeEmbedder(model=config.embedding.model)
+        case EmbedderKind.OPENAI:
+            if not _openai_ready(config):
+                return UnconfiguredEmbedder()
+            from events_curator.embed import OpenAIEmbedder  # noqa: PLC0415  (keeps `llm` optional)
+
+            return OpenAIEmbedder(model=config.embedding.model, api_key=config.llm.api_key)
 
 
 def build_llm(config: AppConfig) -> LLMClient:

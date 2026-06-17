@@ -33,12 +33,13 @@ build-backend = "hatchling.build"
 packages = ["src/events_curator"]
 
 # ---------------------------------------------------------------------------
-# Type checking — strict everywhere. The Streamlit view is an untyped-UI shim
-# and is excluded (its only job is to read the DB and draw widgets).
+# Type checking — strict everywhere, the Streamlit view included. Streamlit
+# ships PEP 561 inline types (`py.typed`), so `st.*` is checked without a
+# separate stubs package.
 # ---------------------------------------------------------------------------
 [tool.pyright]
 include = ["src", "tests"]
-exclude = ["**/__pycache__", "src/events_curator/apps/streamlit_app.py"]
+exclude = ["**/__pycache__"]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.13"

@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from events_curator.config import AppConfig, get_config
+from events_curator.config import AppConfig, get_config, setup_logging
 from events_curator.enums import AuthScheme
 from events_curator.models import Principal, SavedQuery
 from events_curator.pipeline import CurationPipeline, build_default_pipeline, build_storage
@@ -56,7 +56,7 @@ def build_server(config: AppConfig | None = None) -> SchedulerServer:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    setup_logging()
     asyncio.run(build_server().run_forever())
 
 

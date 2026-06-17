@@ -74,6 +74,9 @@ end-to-end with the real `IdentityExpander`, `FrontierWebSearch` engine (with it
 the real `ThresholdDeduper`, the real `PreferenceRanker`, and the real
 `ProfileUpdater`. The orchestration logic of all of these runs with no extra; the
 builder picks each ML adapter from config (`build_search_backend` / `build_llm` /
-`build_embedder`), returning the real OpenAI adapter once an API key and the `llm`
-extra are present and an `Unconfigured*` placeholder otherwise — so a default,
-keyless run raises with a pointer to the extra to wire next.
+`build_embedder`). The search backend and LLM return the real OpenAI adapter once an
+API key and the `llm` extra are present; the embedder defaults to the local
+bge-small `BgeEmbedder` (extra `embed`) and can instead use `OpenAIEmbedder`. Each
+falls back to an `Unconfigured*` placeholder when its backend isn't usable — so a
+default, keyless run raises at the web-search placeholder with a pointer to the
+extra to wire next.
