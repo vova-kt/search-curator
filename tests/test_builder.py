@@ -1,6 +1,6 @@
 """The default wiring assembles a runnable pipeline; running it flows through the
-real expand/merge stages and into the search stub, which raises with a pointer to
-what to implement next."""
+real expand stage and FrontierWebSearch engine into the UnconfiguredWebSearch
+backend, which raises with a pointer to the `llm` extra to wire next."""
 
 from __future__ import annotations
 

@@ -30,8 +30,23 @@ Concurrency: the orchestrator dispatches every expanded query's search at once
 (`asyncio.gather`) — this is project rule 5, and it's why an engine implements a
 *single* query while the fan-out lives above it.
 
-Shipped today: `FrontierWebSearch` stub (raises). Wire a native web-search
-adapter via the `llm` extra.
+The engine (`FrontierWebSearch`) is real and split from the network: it drives a
+narrow `WebSearchBackend` port ("find structured rows for one query") and turns
+those rows into ranked `RawSearchResult`s. URLs are **canonicalized here**, at
+ingestion — the point the corpus first sees an item — so cosmetic variants
+(`www.`, tracking params, fragments, trailing slashes) collapse to one key and
+dedup downstream compares like with like. The backend is a *dedicated* port, not
+the shared `llm` module's `LLMClient`: native web search needs tool use plus
+structured extraction, a different capability than `complete()`'s string-in/
+string-out, and keeping it separate stops that contract from leaking into dedup,
+rank, and feedback.
+
+Shipped today: the engine plus `OpenAIWebSearch`, the concrete backend over
+OpenAI's Responses web-search tool (extra `llm`, re-exported lazily from the
+module door — same pattern as `SqliteStorage`). The default backend wired by the
+builder is `UnconfiguredWebSearch`, which raises until the extra is installed and
+a real backend is swapped in. The prompt/parse contract lives in `search/
+_extract.py`, kept dependency-free so it is unit-tested without the network.
 
 ## merge — `merge/`
 

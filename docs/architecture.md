@@ -69,6 +69,7 @@ is covered in [guardrails.md](guardrails.md).
 ## Status
 
 Pre-`1.0`, nothing stable (see [CLAUDE.md](../CLAUDE.md)). The skeleton runs
-end-to-end with the real `IdentityExpander`, `RRFMerger`, and `InMemoryStorage`;
-`search`, `dedup`, `rank`, and `feedback` ship as stubs that raise with a pointer
-to the adapter to wire next.
+end-to-end with the real `IdentityExpander`, `FrontierWebSearch` engine (with its
+`OpenAIWebSearch` backend behind the `llm` extra), `RRFMerger`, and
+`InMemoryStorage`; `dedup`, `rank`, and `feedback` ship as stubs that raise with a
+pointer to the adapter to wire next.

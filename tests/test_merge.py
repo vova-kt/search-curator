@@ -35,3 +35,13 @@ def test_rrf_keeps_best_ranked_representative() -> None:
 
     assert len(merged) == 1
     assert merged[0].title == "from-list-2"
+
+
+def test_rrf_fuses_on_rank_not_sequence_position() -> None:
+    # `rank` disagrees with the slot in the handed-in list: the better-ranked
+    # item must win regardless of the order the caller passes them in.
+    ranked = [_ev("low", rank=9), _ev("high", rank=0)]
+
+    merged = RRFMerger(k=60).merge([ranked])
+
+    assert [e.url for e in merged] == ["high", "low"]

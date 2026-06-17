@@ -2,16 +2,32 @@
 candidates. The default target is a frontier model's native web-search tool
 (Variant A) — it fans out, reads full pages, and extracts results in one call.
 
+`FrontierWebSearch` (the engine) and its `WebSearchBackend` port are the real,
+dependency-free core; `OpenAIWebSearch` (the concrete backend, extra `llm`) is
+re-exported lazily, so importing this door never pulls in the optional extra.
+`from events_curator.search import OpenAIWebSearch` loads it on demand and raises
+a clear ImportError if `llm` is not installed.
+
 Rule 5: the orchestrator dispatches all expanded queries concurrently; an engine
 implements a single query here.
 """
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from events_curator.enums import SearchEngineKind
 from events_curator.models import ExpandedQuery, RawSearchResult
+from events_curator.search.frontier import (
+    ExtractedResult,
+    FrontierWebSearch,
+    UnconfiguredWebSearch,
+    WebSearchBackend,
+    canonicalize_url,
+)
+
+if TYPE_CHECKING:
+    from events_curator.search.openai_native import OpenAIWebSearch
 
 
 class SearchEngine(Protocol):
@@ -20,15 +36,20 @@ class SearchEngine(Protocol):
     async def search(self, query: ExpandedQuery) -> list[RawSearchResult]: ...
 
 
-class FrontierWebSearch:
-    """STUB for Variant A (an LLM's built-in web search). Wire a real adapter
-    (extra `llm`) that fans out, reads pages, and extracts RawSearchResults."""
+__all__ = [
+    "ExtractedResult",
+    "FrontierWebSearch",
+    "OpenAIWebSearch",
+    "SearchEngine",
+    "UnconfiguredWebSearch",
+    "WebSearchBackend",
+    "canonicalize_url",
+]
 
-    kind = SearchEngineKind.FRONTIER_NATIVE
 
-    async def search(self, query: ExpandedQuery) -> list[RawSearchResult]:
-        del query
-        raise NotImplementedError("FrontierWebSearch is a stub; wire a native web-search adapter.")
+def __getattr__(name: str) -> object:
+    if name == "OpenAIWebSearch":
+        from events_curator.search.openai_native import OpenAIWebSearch  # noqa: PLC0415
 
-
-__all__ = ["FrontierWebSearch", "SearchEngine"]
+        return OpenAIWebSearch
+    raise AttributeError(f"module {__name__!r} has no attribute {name}")

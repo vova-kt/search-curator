@@ -1,7 +1,9 @@
 """Default wiring. Assembles a pipeline from config using the shipped stage
-implementations: the real IdentityExpander and RRFMerger, the in-memory store,
-and the not-yet-implemented search/dedup/rank/feedback stubs. Running it works
-up to the first stub, which raises with a pointer to what to wire next."""
+implementations: the real IdentityExpander, the real FrontierWebSearch engine
+(driving the UnconfiguredWebSearch backend until the `llm` extra is wired), the
+RRFMerger, the in-memory store, and the not-yet-implemented dedup/rank/feedback
+stubs. Running it works up to the first stub, which raises with a pointer to what
+to wire next."""
 
 from __future__ import annotations
 
@@ -12,14 +14,16 @@ from events_curator.feedback import ProfileUpdater
 from events_curator.merge import RRFMerger
 from events_curator.pipeline.orchestrator import CurationPipeline, Stages
 from events_curator.rank import PreferenceRanker
-from events_curator.search import FrontierWebSearch
+from events_curator.search import FrontierWebSearch, UnconfiguredWebSearch
 from events_curator.storage import InMemoryStorage, Storage
 
 
 def build_default_stages(config: AppConfig) -> Stages:
     return Stages(
         expander=IdentityExpander(),
-        search=FrontierWebSearch(),
+        search=FrontierWebSearch(
+            UnconfiguredWebSearch(), max_results=config.search.max_results_per_query
+        ),
         merger=RRFMerger(k=config.search.rrf_k),
         deduper=ThresholdDeduper(),
         ranker=PreferenceRanker(),
