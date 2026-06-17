@@ -1,8 +1,12 @@
 # Storage
 
 Ports live in `storage/protocols.py`; the dependency-free default is
-`storage/memory.py`. The production adapter is SQLite + `sqlite-vec` (extra
-`store`) behind the same `Storage` facade.
+`storage/memory.py`. The production adapter is `SqliteStorage` (SQLite +
+`sqlite-vec`, extra `store`) in `storage/sqlite.py`, behind the same `Storage`
+facade. It is re-exported lazily from the module door, so importing
+`events_curator.storage` never pulls in the optional extra — only
+`from events_curator.storage import SqliteStorage` does, and that raises a clear
+error if `store` isn't installed.
 
 ## Why SQLite, not Postgres
 
@@ -37,6 +41,22 @@ feedback, preferences) rather than one fat object, so a stage depends only on th
 slice it needs — dedup takes a `SearchResultStore`, feedback takes a `FeedbackStore` +
 `PreferenceStore`. The cross-session dedup query is `SearchResultStore.nearest`, which
 applies the date+city block before scoring; see the protocol for its shape.
+
+## SQLite row layout
+
+Each aggregate stores its full pydantic model as a JSON `data` column, so
+round-tripping stays faithful and survives model changes without per-column
+migrations (pre-`1.0`: reset the file instead). The columns *beside* `data`
+exist only to filter or sort — ownership and schedule flags for queries, the
+normalized city and `starts_at` epoch that form the dedup block — or to hold
+vectors as float32 blobs, which are kept out of `data` to avoid storing them
+twice and re-attached on read. `nearest` runs the date+city block as a plain
+`WHERE`, then scores the survivors with a flat `vec_distance_cosine` scan
+(co-located in the same file, no second service) and returns cosine
+*similarity* (`1 − distance`) — the same ordering `InMemoryStorage` produces.
+
+`SqliteStorage` owns one connection: `init()` opens it, loads the extension, and
+applies the schema; `close()` releases it.
 
 ## In-memory default
 
