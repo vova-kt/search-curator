@@ -28,20 +28,43 @@ NL summary captures nuance the centroids can't.
 
 ## How ranking uses them
 
-The intended flow (real impl, later): taste-vector prefilter to cut the candidate
-set cheaply → LLM reranker fed the NL summary for the final order. Two refinements
-kick in over time:
+`PreferenceRanker` (`rank/`) runs the flow: a **taste-vector prefilter** orders
+every result on the liked-minus-disliked axis and keeps the top `rank.top_n` —
+cheap because it reuses each canonical's stored embedding and only embeds (one
+batched call) the rare result that lacks one. An **LLM reranker**, fed the NL
+summary, then orders that kept set. The reranker's reply is parsed conservatively:
+any candidate the model drops or names twice is repaired (omitted ones are appended
+in prefilter order), so a misbehaving reply can never lose or duplicate a result —
+the same defensive posture as dedup's judge.
 
-- a **logistic-regression blender** that combines the signals once feedback
-  crosses `rank.logistic_blender_min_labels` (below that there's too little data
-  to fit, so it's skipped);
-- a couple of **exploration slots** (`rank.exploration_slots`) reserved for
-  diverse/uncertain items, so the ranking doesn't collapse onto past likes and
-  starve the feedback signal. Items filling a slot are flagged `is_exploration`.
+A couple of **exploration slots** (`rank.exploration_slots`) are then carved out of
+the returned list for the most *uncertain* leftover candidates — those whose taste
+score sits nearest zero, i.e. the ones the centroids are least sure about. They're
+flagged `is_exploration` so a UI can mark them, and they exist so the ranking
+doesn't collapse onto past likes and starve the feedback signal of fresh labels.
+
+Not yet built: the **logistic-regression blender** that the design folds in past
+`rank.logistic_blender_min_labels`. Fitting it needs the individual labelled
+vectors, but the rank stage only receives the centroid *profile*, not the feedback
+history — so threading those through (or storing fitted weights on the profile) is
+the prerequisite, and it's deferred until the taste+LLM signal proves insufficient.
 
 All thresholds live in `config.py`.
 
-Shipped today: `PreferenceRanker` and `ProfileUpdater` are stubs (raise). Both
-need the `embed` + `llm` extras. The feedback path is otherwise wired: a like or
-dislike with an optional free-text reason flows through the orchestrator (which
-enforces ownership) into the learner.
+## Learning from feedback
+
+`ProfileUpdater` (`feedback/`) folds one like/dislike into the profile. It looks the
+liked/disliked item up in the result store (so it needs the read side, not just the
+two preference stores), takes that item's vector — its stored embedding, or a fresh
+embedding if it has none — and advances the matching centroid by an **exact
+incremental mean**, so a new label costs one update, never a re-scan of history. In
+the same step an LLM rewrites the NL summary from the prior summary plus the new
+label and its free-text reason. The embed and the summary call are independent, so
+they're dispatched concurrently (rule 5). The whole path is wired through the
+orchestrator, which enforces ownership before the learner ever runs.
+
+Shipped today: both stages are real. They drive the shared `Embedder` and
+`LLMClient` ports, which default to the Unconfigured placeholders — so a live run
+raises with a pointer to the `embed`/`llm` extra until real adapters are wired.
+`OpenAIChat` (`llm/`, extra `llm`) is the concrete `LLMClient`, re-exported lazily
+from the module door like `search.OpenAIWebSearch`.

@@ -108,7 +108,9 @@ class FakeLearner:
         *,
         feedback_store: FeedbackStore,
         preference_store: PreferenceStore,
+        result_store: SearchResultStore,
     ) -> PreferenceProfile:
+        del result_store
         await feedback_store.add(feedback)
         profile = await preference_store.get(feedback.saved_query_id) or PreferenceProfile(
             saved_query_id=feedback.saved_query_id

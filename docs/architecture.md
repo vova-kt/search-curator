@@ -71,7 +71,8 @@ is covered in [guardrails.md](guardrails.md).
 Pre-`1.0`, nothing stable (see [CLAUDE.md](../CLAUDE.md)). The skeleton runs
 end-to-end with the real `IdentityExpander`, `FrontierWebSearch` engine (with its
 `OpenAIWebSearch` backend behind the `llm` extra), `RRFMerger`, `InMemoryStorage`,
-and the real `ThresholdDeduper` (its entity-resolution logic runs with no extra; it
-drives an `Embedder` + LLM judge that default to the Unconfigured placeholders);
-`rank` and `feedback` ship as stubs that raise with a pointer to the adapter to
-wire next.
+the real `ThresholdDeduper`, the real `PreferenceRanker`, and the real
+`ProfileUpdater`. The orchestration logic of all of these runs with no extra; the
+stages that need ML drive an `Embedder` and an `LLMClient` (`OpenAIChat`, extra
+`llm`) that default to the Unconfigured placeholders, so a live run raises with a
+pointer to the `embed`/`llm` extra to wire next.

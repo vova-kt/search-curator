@@ -87,4 +87,5 @@ class CurationPipeline:
             feedback,
             feedback_store=self._storage.feedback,
             preference_store=self._storage.preferences,
+            result_store=self._storage.results,
         )

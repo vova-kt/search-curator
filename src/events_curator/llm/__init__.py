@@ -1,12 +1,23 @@
 """LLM port. Used by dedup (tiebreak judge), rank (preference reranker), and
-feedback (profile summarization). Concrete adapters live behind this door."""
+feedback (profile summarization).
+
+`ChatMessage`, the `LLMClient` protocol, and the `UnconfiguredLLM` default are the
+dependency-free core. `OpenAIChat` (the concrete adapter, extra `llm`) is
+re-exported lazily, so importing this door never pulls in the optional extra.
+`from events_curator.llm import OpenAIChat` loads it on demand and raises a clear
+ImportError if `llm` is not installed — same pattern as `search.OpenAIWebSearch`
+and `storage.SqliteStorage`.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from events_curator.llm.openai_chat import OpenAIChat
 
 
 class ChatMessage(BaseModel):
@@ -24,7 +35,7 @@ class LLMClient(Protocol):
 
 
 class UnconfiguredLLM:
-    """Default placeholder. Swap in an OpenAI/Anthropic adapter (extra `llm`)."""
+    """Default placeholder. Swap in `OpenAIChat` (extra `llm`) or another adapter."""
 
     async def complete(
         self,
@@ -36,4 +47,12 @@ class UnconfiguredLLM:
         raise NotImplementedError("No LLM adapter; install the `llm` extra and wire one.")
 
 
-__all__ = ["ChatMessage", "LLMClient", "UnconfiguredLLM"]
+__all__ = ["ChatMessage", "LLMClient", "OpenAIChat", "UnconfiguredLLM"]
+
+
+def __getattr__(name: str) -> object:
+    if name == "OpenAIChat":
+        from events_curator.llm.openai_chat import OpenAIChat  # noqa: PLC0415
+
+        return OpenAIChat
+    raise AttributeError(f"module {__name__!r} has no attribute {name}")

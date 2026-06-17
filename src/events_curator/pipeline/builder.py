@@ -1,10 +1,11 @@
 """Default wiring. Assembles a pipeline from config using the shipped stage
 implementations: the real IdentityExpander, the real FrontierWebSearch engine
 (driving the UnconfiguredWebSearch backend until the `llm` extra is wired), the
-RRFMerger, the real ThresholdDeduper (driving the UnconfiguredEmbedder + LLM judge
-until the `embed`/`llm` extras are wired), the in-memory store, and the
-not-yet-implemented rank/feedback stubs. Running it works up to the first
-unconfigured adapter, which raises with a pointer to what to wire next."""
+RRFMerger, the real ThresholdDeduper, the real PreferenceRanker, and the real
+ProfileUpdater — the last three driving the UnconfiguredEmbedder + UnconfiguredLLM
+until the `embed`/`llm` extras are wired — over the in-memory store. Running it
+works up to the first unconfigured adapter, which raises with a pointer to what to
+wire next."""
 
 from __future__ import annotations
 
@@ -35,8 +36,13 @@ def build_default_stages(config: AppConfig) -> Stages:
             tiebreak_low_threshold=config.dedup.tiebreak_low_threshold,
             block_window_days=config.dedup.block_window_days,
         ),
-        ranker=PreferenceRanker(),
-        learner=ProfileUpdater(),
+        ranker=PreferenceRanker(
+            UnconfiguredEmbedder(),
+            UnconfiguredLLM(),
+            top_n=config.rank.top_n,
+            exploration_slots=config.rank.exploration_slots,
+        ),
+        learner=ProfileUpdater(UnconfiguredEmbedder(), UnconfiguredLLM()),
     )
 
 
