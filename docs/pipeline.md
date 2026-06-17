@@ -68,11 +68,36 @@ ask an LLM judge; below → insert as new. Merged records build a **golden recor
 by survivorship and keep provenance. Concept:
 [concepts/entity-resolution.md](concepts/entity-resolution.md).
 
+Two design choices worth their *why*:
+
+- **The two signals fuse by taking the stronger of them** (`max`, in
+  `dedup/_match.py`): either strong wording overlap *or* strong semantic closeness
+  flags a likely duplicate. That favours recall; the tiebreak-band LLM judge is the
+  guard that stops a high-lexical-but-unrelated pair from auto-merging. A wrong
+  merge corrupts the golden record, so the judge's verdict is parsed
+  conservatively — anything but a clear "yes" inserts new (a missed merge is
+  recovered next run).
+- **Within-run dedup rides the same path as cross-session.** Each new/updated
+  canonical is upserted *as it is decided*, so a later candidate's `nearest`
+  already sees it — no separate intra-batch pass. An exact-URL index
+  short-circuits the common case of two candidates sharing one canonical URL.
+
+Survivorship is **first-non-empty-wins** (plus a tag union): the canonical keeps a
+field once any source fills it, later sightings only fill gaps, and provenance
+records the raw source that won each field. (No per-source trust scores yet, so
+"earliest complete sighting holds the field" is the order we can defend.)
+
 The cross-session lookup is the store's `nearest` (date+city window), so dedup
 depends only on the `SearchResultStore` read side. Thresholds live in `config.py`, not
 as literals, so eval can sweep them.
 
-Shipped today: `ThresholdDeduper` stub (raises). Needs the `embed` + `llm` extras.
+Shipped today: `ThresholdDeduper` is real — blocking + two-threshold similarity +
+the survivorship/provenance logic all run without any extra. It drives an
+`Embedder` (semantic signal) and an `LLMClient` (the judge), both defaulting to the
+Unconfigured placeholders, so a live run raises with a pointer to the `embed`/`llm`
+extra to wire — the same shape as the search backend. The prompt/parse and
+matching contracts live in dependency-free helpers (`dedup/_judge.py`,
+`dedup/_match.py`, `dedup/_golden.py`), unit-tested without the network.
 
 ## store — `storage/`
 

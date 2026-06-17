@@ -1,16 +1,19 @@
 """Default wiring. Assembles a pipeline from config using the shipped stage
 implementations: the real IdentityExpander, the real FrontierWebSearch engine
 (driving the UnconfiguredWebSearch backend until the `llm` extra is wired), the
-RRFMerger, the in-memory store, and the not-yet-implemented dedup/rank/feedback
-stubs. Running it works up to the first stub, which raises with a pointer to what
-to wire next."""
+RRFMerger, the real ThresholdDeduper (driving the UnconfiguredEmbedder + LLM judge
+until the `embed`/`llm` extras are wired), the in-memory store, and the
+not-yet-implemented rank/feedback stubs. Running it works up to the first
+unconfigured adapter, which raises with a pointer to what to wire next."""
 
 from __future__ import annotations
 
 from events_curator.config import AppConfig, get_config
 from events_curator.dedup import ThresholdDeduper
+from events_curator.embed import UnconfiguredEmbedder
 from events_curator.expand import IdentityExpander
 from events_curator.feedback import ProfileUpdater
+from events_curator.llm import UnconfiguredLLM
 from events_curator.merge import RRFMerger
 from events_curator.pipeline.orchestrator import CurationPipeline, Stages
 from events_curator.rank import PreferenceRanker
@@ -25,7 +28,13 @@ def build_default_stages(config: AppConfig) -> Stages:
             UnconfiguredWebSearch(), max_results=config.search.max_results_per_query
         ),
         merger=RRFMerger(k=config.search.rrf_k),
-        deduper=ThresholdDeduper(),
+        deduper=ThresholdDeduper(
+            UnconfiguredEmbedder(),
+            UnconfiguredLLM(),
+            auto_merge_threshold=config.dedup.auto_merge_threshold,
+            tiebreak_low_threshold=config.dedup.tiebreak_low_threshold,
+            block_window_days=config.dedup.block_window_days,
+        ),
         ranker=PreferenceRanker(),
         learner=ProfileUpdater(),
     )
