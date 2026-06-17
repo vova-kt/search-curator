@@ -63,3 +63,9 @@ applies the schema; `close()` releases it.
 `InMemoryStorage` is a real implementation (plain dicts + pure-Python cosine and
 date/city blocking), not a mock. Tests and eval run against it with no native
 dependencies, and it's the reference for what the SQLite adapter must reproduce.
+
+The wiring helper `build_storage` (`pipeline/builder.py`) is the single place that
+turns config into a store: `STORAGE__DB_PATH=:memory:` selects `InMemoryStorage`,
+any other path selects `SqliteStorage` (imported lazily, so the `store` extra is
+required only when actually chosen). Every UI calls it, so they all agree on the
+same backing store.

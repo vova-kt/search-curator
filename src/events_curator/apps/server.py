@@ -15,8 +15,8 @@ import logging
 from events_curator.config import AppConfig, get_config
 from events_curator.enums import AuthScheme
 from events_curator.models import Principal, SavedQuery
-from events_curator.pipeline import CurationPipeline, build_default_pipeline
-from events_curator.storage import InMemoryStorage, Storage
+from events_curator.pipeline import CurationPipeline, build_default_pipeline, build_storage
+from events_curator.storage import Storage
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class SchedulerServer:
 
 def build_server(config: AppConfig | None = None) -> SchedulerServer:
     config = config or get_config()
-    storage: Storage = InMemoryStorage()
+    storage: Storage = build_storage(config)
     pipeline = build_default_pipeline(config, storage)
     return SchedulerServer(pipeline, storage, config.server.scheduler_tick_seconds)
 

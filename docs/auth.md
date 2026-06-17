@@ -24,6 +24,14 @@ first sight; auth itself stays a pure function of the credential.
 
 `AuthScheme` enumerates them: `LOCAL` (single operator, every credential maps to
 the same person — for dev and the scheduler), `TELEGRAM` (credential is the chat
-id), and `API_TOKEN` (static bearer). The scheme in use is set in `config.py`.
-Adding one means implementing the `Authenticator` protocol; ownership enforcement
-downstream is unchanged.
+id), and `API_TOKEN` (static bearer). The scheme in use is set in `config.py`, and
+`build_authenticator` (`pipeline/builder.py`) maps it to the matching
+`Authenticator`. `LOCAL` and `TELEGRAM` ship; `API_TOKEN` is enumerated but has no
+authenticator yet, so the factory raises a pointer to wire one. Adding a scheme
+means implementing the `Authenticator` protocol and adding its case to the
+factory; ownership enforcement downstream is unchanged.
+
+The Streamlit *Run & feedback* console (see [deployment.md](deployment.md)) is
+gated to `LOCAL` — it's a single-operator tool — but it deliberately still
+authenticates through this module to get its `Principal`, so the pipeline's
+`ensure_owner` check runs the same way it does for every other caller.

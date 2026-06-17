@@ -43,10 +43,12 @@ rank, and feedback.
 
 Shipped today: the engine plus `OpenAIWebSearch`, the concrete backend over
 OpenAI's Responses web-search tool (extra `llm`, re-exported lazily from the
-module door — same pattern as `SqliteStorage`). The default backend wired by the
-builder is `UnconfiguredWebSearch`, which raises until the extra is installed and
-a real backend is swapped in. The prompt/parse contract lives in `search/
-_extract.py`, kept dependency-free so it is unit-tested without the network.
+module door — same pattern as `SqliteStorage`). The builder's `build_search_backend`
+picks `OpenAIWebSearch` when an API key is set and the `llm` extra is installed, and
+`UnconfiguredWebSearch` — which raises a pointer to the extra — otherwise; so a
+default, keyless run still reaches the placeholder and stops there. The prompt/parse
+contract lives in `search/_extract.py`, kept dependency-free so it is unit-tested
+without the network.
 
 ## merge — `merge/`
 
@@ -93,11 +95,13 @@ as literals, so eval can sweep them.
 
 Shipped today: `ThresholdDeduper` is real — blocking + two-threshold similarity +
 the survivorship/provenance logic all run without any extra. It drives an
-`Embedder` (semantic signal) and an `LLMClient` (the judge), both defaulting to the
-Unconfigured placeholders, so a live run raises with a pointer to the `embed`/`llm`
-extra to wire — the same shape as the search backend. The prompt/parse and
-matching contracts live in dependency-free helpers (`dedup/_judge.py`,
-`dedup/_match.py`, `dedup/_golden.py`), unit-tested without the network.
+`Embedder` (semantic signal) and an `LLMClient` (the judge) that the builder picks
+via `build_embedder` / `build_llm`: the judge is `OpenAIChat` once a key + the `llm`
+extra are present, while no concrete embedder ships yet, so a live run still reaches
+an Unconfigured placeholder and raises a pointer to the extra to wire — the same
+shape as the search backend. The prompt/parse and matching contracts live in
+dependency-free helpers (`dedup/_judge.py`, `dedup/_match.py`, `dedup/_golden.py`),
+unit-tested without the network.
 
 ## store — `storage/`
 

@@ -9,10 +9,17 @@ the stack in Docker. Two thin processes share one SQLite file.
 
 - **server** — the scheduler. It wakes every `SERVER__SCHEDULER_TICK_SECONDS`,
   finds enabled saved queries with a cron, and runs the pipeline for each. Entry
-  point is `apps/server.py` (`events-curator` script).
-- **ui** — the Streamlit DB view (`apps/streamlit_app.py`), a **read-only**
-  window onto the same database for inspecting what the server wrote. It opens
-  SQLite in `mode=ro`; it never writes.
+  point is `apps/server.py` (`events-curator` script). Both processes pick their
+  store with `build_storage` (`pipeline/builder.py`), so they share one SQLite
+  file unless `STORAGE__DB_PATH` is the `:memory:` sentinel.
+- **ui** — the Streamlit app (`apps/streamlit_app.py`), two tabs: a **read-only**
+  *Database* window (opens SQLite `mode=ro`, never writes) for inspecting what the
+  server wrote, and a *Run & feedback* console. The console is **local-only** — it
+  loads only under `AUTH__SCHEME=local` — but it still mints a `Principal` through
+  the `auth` module so the pipeline's ownership checks run unchanged. Through it an
+  operator creates/saves queries, runs them, and records like/dislike feedback; a
+  live run needs the `llm`/`embed` adapters wired, otherwise it surfaces the
+  unconfigured-stage message rather than failing silently.
 
 They share a Docker volume so the view sees the server's writes. Both read
 `STORAGE__DB_PATH=/data/events.db`.

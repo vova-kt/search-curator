@@ -73,6 +73,7 @@ end-to-end with the real `IdentityExpander`, `FrontierWebSearch` engine (with it
 `OpenAIWebSearch` backend behind the `llm` extra), `RRFMerger`, `InMemoryStorage`,
 the real `ThresholdDeduper`, the real `PreferenceRanker`, and the real
 `ProfileUpdater`. The orchestration logic of all of these runs with no extra; the
-stages that need ML drive an `Embedder` and an `LLMClient` (`OpenAIChat`, extra
-`llm`) that default to the Unconfigured placeholders, so a live run raises with a
-pointer to the `embed`/`llm` extra to wire next.
+builder picks each ML adapter from config (`build_search_backend` / `build_llm` /
+`build_embedder`), returning the real OpenAI adapter once an API key and the `llm`
+extra are present and an `Unconfigured*` placeholder otherwise — so a default,
+keyless run raises with a pointer to the extra to wire next.

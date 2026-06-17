@@ -12,3 +12,7 @@ coverage/
 .vscode/
 .idea/
 *.log
+.import_linter_cache
+.venv
+.ruff_cache
+.pytest_cache
