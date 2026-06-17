@@ -1,40 +1,47 @@
-# Preferences
+# Preferences and ranking
 
-How user signal turns into ranking input.
+How the curator learns what one recurring search likes, and how that reshapes the
+next run. Ranking is `rank/`; learning is `feedback/`; the learned state is the
+`PreferenceProfile` in `models/ranking.py`.
 
-There is no separate `Preference` object. Per-event signal lives on the `event_states` junction (one row per `(event_id, city, query_text)`); per-saved-query taste configuration lives on the matching `SavedQuery` row. See [storage.md](storage.md) for why state is per-saved-query and how the rows relate. The `config.preferences.*` tunables (`deriveTraits`, `traitsRefreshThreshold`) are in [src/core/config.js](../src/core/config.js); the state values are an enum at [src/core/eventState.js](../src/core/eventState.js).
+## Per-saved-query, not per-user
 
-## State machine
+This is the load-bearing decision. Personalization keys on `SavedQueryId`, so the
+same person's "jazz in Berlin" and "trail races in the Alps" each keep their own
+taste. A global per-user profile would average those into mush. Concretely:
+`Feedback` carries a `saved_query_id`, and the orchestrator reads/writes
+preferences by query id around the rank stage.
 
-Every event the pipeline produces ends up in one of four states for a given saved query:
+## Two signals, learned from the same feedback
 
-- **Found** — pipeline produced it; not yet shown. Written by the orchestrator after `upsertEvents`.
-- **Shown** — surfaced to the user (e.g. the TUI rendered it on a page). Written by the **consumer**, not the pipeline — see [pipeline.md](pipeline.md).
-- **Liked** / **Disliked** — explicit user signal. Disliked rows may carry a free-text `reason`.
+Each profile holds two things, updated together whenever feedback arrives:
 
-Transitions: `Found → Shown → {Liked, Disliked}`. Re-curating writes `Found`, but the storage adapters never overwrite a non-Found row with `Found` — once a row has been seen or rated, that signal sticks even when the same event resurfaces. The dedupe stage uses this to suppress already-shown events on the next run for the same saved query.
+- **Taste centroids** — the mean embedding of liked items and of disliked items.
+  Cheap, always-on, and good for a fast prefilter (cosine to liked-minus-disliked).
+  Concept: [concepts/taste-vectors.md](concepts/taste-vectors.md).
+- **A natural-language summary** — a short LLM-written description of what this
+  search wants ("prefers small venues, dislikes tribute acts"). It's what feeds
+  the LLM reranker and what a human can read and correct.
 
-## Capture
+Keeping both means the embedding signal works from the very first label while the
+NL summary captures nuance the centroids can't.
 
-Consumers transition rows by calling `curator.recordFeedback({ ids, state, reasons?, ref })`. One state per call — split likes and dislikes into two calls. `reasons` is `{ [id]: string }`, only meaningful when `state === DISLIKED`; empty/whitespace strings are ignored. `ref` defaults to the last `curate()` ref if omitted.
+## How ranking uses them
 
-The TUI captures dislike reasons inline via a small text-input prompt that opens when the user toggles dislike on; pressing Enter commits (empty is fine — the dislike still records), Esc cancels the dislike entirely. See [apps/tui.md](apps/tui.md).
+The intended flow (real impl, later): taste-vector prefilter to cut the candidate
+set cheaply → LLM reranker fed the NL summary for the final order. Two refinements
+kick in over time:
 
-## Per-saved-query taste
+- a **logistic-regression blender** that combines the signals once feedback
+  crosses `rank.logistic_blender_min_labels` (below that there's too little data
+  to fit, so it's skipped);
+- a couple of **exploration slots** (`rank.exploration_slots`) reserved for
+  diverse/uncertain items, so the ranking doesn't collapse onto past likes and
+  starve the feedback signal. Items filling a slot are flagged `is_exploration`.
 
-A `SavedQuery` carries the per-query taste profile alongside its identity. Two of those fields drive ranking directly:
+All thresholds live in `config.py`.
 
-- **Hard rules** (`excludeKeywords`, `excludeVenues`, `price`, `freeOnly`) are read by the `rules` rank strategy. With no saved query, no rule-filtering applies. Keyword matching is morphology-aware via Snowball stemming so `excludeKeywords: ['концерт']` drops `'концерта'` / `'концертов'` and `['show']` drops `'shows'` / `'showing'`. Venue matching stays exact (post-`normalize`) — proper nouns shouldn't be stemmed. See [strategies.md](strategies.md) for `rules` details.
-- **Soft signal** (`guidance`, `derivedTraits`) flows into the `llmRank` strategy along with the user's liked/disliked examples, instructing the model to omit poor matches and reorder by likely interest.
-
-The taste profile is auto-attached to `ctx.query.savedQuery` by `curate()` if a row matches the call's `(city, queryText)` — the consumer doesn't have to load it.
-
-## Derived traits
-
-`derivedTraits` is an optional short string ("intimate venues, alt-comedy, weeknights") generated by the LLM from the saved query's `queryText`, `guidance`, and liked/disliked examples. The query and guidance anchor the trait line to the user's stated domain and explicit principles, so the result stays on-topic even with sparse or noisy examples. Cheaper to feed into the rank prompt than dozens of liked/disliked events.
-
-It is **derived**, not authoritative — a stale value never breaks correctness, only ranking quality. The feedback stage recomputes it lazily when the count of LIKED + DISLIKED rows for the saved query reaches `config.preferences.traitsRefreshThreshold`. The corresponding prompt is [src/prompts/derivePreferenceTraits.js](../src/prompts/derivePreferenceTraits.js).
-
-## Why disliked reasons matter
-
-Without a reason, a dislike is just "this one event was bad." With a reason ("too touristy", "wrong neighborhood"), the rank prompt is instructed to apply the stated principle generally, not only to literal lookalikes. That moves the signal from per-event noise to per-query taste — the same mechanism `derivedTraits` uses, but immediate.
+Shipped today: `PreferenceRanker` and `ProfileUpdater` are stubs (raise). Both
+need the `embed` + `llm` extras. The feedback path is otherwise wired: a like or
+dislike with an optional free-text reason flows through the orchestrator (which
+enforces ownership) into the learner.

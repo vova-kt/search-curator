@@ -1,5 +1,0 @@
-<component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="script.js" type="NodeJSConfigurationType" application-parameters="--city &quot;berlin&quot; --query &quot;russian standup&quot; --search brave --days 14 --maxQueries 5 --maxEvents 20 --guidance &quot;no open mic&quot;" nameIsGenerated="true" node-parameters="--env-file=.env.dev" path-to-js-file="examples/script.js" working-dir="$PROJECT_DIR$/">
-    <method v="2" />
-  </configuration>
-</component>

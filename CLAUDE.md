@@ -1,6 +1,6 @@
 # events-curator — Claude working notes
 
-AI-curated upcoming events. Pluggable search engines, LLMs, storage, and ranking strategies. Runs in Node and (with the right adapters) in the browser.
+AI-curated recurring web searches: a saved query re-runs on a schedule, reconciles results against everything seen before, and ranks what's left by learned taste. Upcoming events are the flagship example, but the pipeline is domain-agnostic — the same machinery curates papers, jobs, or listings. Pluggable search engines, LLMs, storage, and ranking strategies. 
 
 > **Status: active pre-`1.0` development.** Nothing is stable. Schemas, public APIs, config shapes, prompt contracts, and strategy interfaces all change without notice. There is no migration system for storage — when the schema changes, reset local databases. Don't add migrations, deprecation shims, or "legacy" branches.
 
@@ -11,52 +11,40 @@ These are project rules. Follow them on every change.
 1. **Update docs and `CLAUDE.md` in the same change.** Whenever behavior, architecture, public API, config, prompts, or strategies change, update the relevant `docs/*.md` page and this file together. Stale docs actively mislead. If you're not updating docs, you're not done.
 2. **Bug fixes target the root cause.** Do not patch symptoms, swallow errors, or special-case the failing input. Trace the failure to the underlying cause and fix it there. If the root cause is out of scope, say so explicitly and stop — don't ship a workaround silently.
 3. **No backward compatibility while in development.** The lib is pre-`1.0`. Rename, restructure, drop fields, change return shapes whenever it makes the design better. Don't add deprecation shims, "legacy" branches, aliases, or migrations. Just change it and update the docs.
-4. **Use enums, not raw string/number constants, for closed sets of values.** Any value drawn from a fixed set that's used in more than one place — stage names, phase names, categories, status codes, kinds, modes — must be defined as a frozen enum object (e.g. `Object.freeze({ FOO: 'foo' })`) in a dedicated module and imported. Do not hard-code the underlying literals at call sites. JSDoc string-literal unions stay as the type contract; the enum is the single source of truth for the runtime values. Existing example: [src/core/progress.js](src/core/progress.js).
-5. **Multiple web/LLM requests run concurrently.** When a stage, strategy, or adapter issues more than one network or LLM call whose inputs are known up front, dispatch them in parallel — `Promise.all` for fail-fast aggregation, `Promise.allSettled` when one failure must not abort the rest, or a bounded worker pool when the fan-out is large enough to need a concurrency cap (see [src/stages/extract.js](src/stages/extract.js) for the worker-pool pattern and `pipeline.extractConcurrency` in [src/core/config.js](src/core/config.js)). Sequential `await` in a loop is only acceptable when each request genuinely depends on the previous one's response (e.g., the rank strategy chain, where each strategy operates on the previous strategy's output). Tick-style progress emission stays correct under parallel dispatch — increment the counter inside a `finally` block, as [src/stages/searchByQueries.js](src/stages/searchByQueries.js) does.
+4. **Use enums, not raw string/number constants, for closed sets of values.** Any value drawn from a fixed set that's used in more than one place — stage names, phase names, status codes, kinds, modes — must be defined as a enum in a dedicated module and imported. Do not hard-code the underlying literals at call sites; the enum is the single source of truth for the runtime values. (Result `tags` are the deliberate exception: a recurring search can target any domain, so the tag vocabulary is open-ended and modelled as free-form `list[str]`, not an enum.) 
+5. **Multiple web/LLM requests run concurrently.** When a stage, strategy, or adapter issues more than one network or LLM call whose inputs are known up front, dispatch them in parallel.
 6. **Docs never duplicate code.** No type defs, no schema column tables, no contract signatures, no key-binding tables, no copies of prompts or `DEFAULTS` in `docs/`. A one-line prose summary plus a link to the source file is the right shape. Pseudocode is acceptable only for genuinely complex algorithms where prose alone is hard to follow. Anything else: link to the code. Duplicates rot the moment the code changes.
-7. **Human docs are concise and consolidated.** One page per topic, not a folder of three. The previous `docs/adapters/`, `docs/strategies/`, `docs/prompts/`, and `docs/apps/tui/` splits were wrong — collapse before adding more. Each page should be readable end-to-end in a few minutes.
-8. **Human docs explain *why* and *how*, not *what*.** *What* (fields, signatures, names) is the code's job. Docs cover design rationale ("why per-saved-query state, not global"), tradeoffs ("why SQLite, not Postgres"), invariants ("rank may shrink the list; orchestrator slices afterwards"), and integration recipes ("how to add an adapter"). If a paragraph could be regenerated by reading the code, delete it.
+7. **Human docs are concise and consolidated.** One page per topic, not a folder of three. Each page should be readable end-to-end in a few minutes.
+8. **Human docs explain *why* and *how*, not *what*.** *What* (fields, signatures, names) is the code's job. Docs cover design rationale ("why per-saved-query state, not global"), tradeoffs ("why SQLite, not Postgres"), invariants, and integration recipes. If a paragraph could be regenerated by reading the code, delete it.
+9. **Explain underlying concepts.** When a design decision, implementation, or discussion relies on ML, or other domain knowledge, write a short concept explainer in `docs/concepts/` (one file per concept, e.g. `docs/concepts/airfoil-noise.md`). Keep each to ≤1 page: what it is, why it matters for this project, and a practical takeaway. Link to the concept file from the relevant doc or conversation summary.
+10. **New features require tests.** Every new feature, pattern, or behavioral change must include tests in the appropriate `test/` suite.
 
-These rules echo [Anthropic's CLAUDE.md guidance](https://code.claude.com/docs/en/best-practices) — keep this file lean (it loads every session); use hierarchical `CLAUDE.md` files in subtrees ([app/tui/CLAUDE.md](app/tui/CLAUDE.md)) for module-specific context that loads only when working in that area.
+These rules echo [Anthropic's CLAUDE.md guidance](https://code.claude.com/docs/en/best-practices) — keep this file lean (it loads every session); use hierarchical `CLAUDE.md` files in subtrees for module-specific context that loads only when working in that area.
 
 ## Where things live
 
 The `docs/` directory is the canonical reference. Read the page that matches your task before editing code.
 
-- [docs/architecture.md](docs/architecture.md) — layers, module boundaries, why the pipeline is shaped the way it is
-- [docs/pipeline.md](docs/pipeline.md) — stage contracts (searchByQueries → extract → dedupe → rank → feedback), error semantics, progress
-- [docs/adapters.md](docs/adapters.md) — search / LLM / storage adapter contracts, built-ins, how to add one
-- [docs/strategies.md](docs/strategies.md) — pluggable queryExpansion / dedupe / rank strategies and the reasoning behind the defaults
-- [docs/storage.md](docs/storage.md) — why the data is shaped this way; SQLite vs IndexedDB vs memory
-- [docs/prompts.md](docs/prompts.md) — prompt file shape, authoring rules (XML-tagged sections, long-input exception), model-specific notes
-- [docs/preferences.md](docs/preferences.md) — how user signal turns into ranking input (state machine + derived traits)
-- [docs/examples.md](docs/examples.md) — running the script and CLI
-- [docs/env.md](docs/env.md) — env-var bindings for API keys and DB path
-- [docs/eval.md](docs/eval.md) — manual-only LLM eval pipelines for prompt iteration. For in-tree gotchas see [eval/CLAUDE.md](eval/CLAUDE.md)
-- [docs/apps/tui.md](docs/apps/tui.md) — the TUI front-end (the only app today; web app planned). For in-tree gotchas see [app/tui/CLAUDE.md](app/tui/CLAUDE.md)
+- [architecture.md](docs/architecture.md) — the big picture: UI-agnostic pipeline, module layering, the two load-bearing decisions (per-query preferences, multi-user DB).
+- [pipeline.md](docs/pipeline.md) — the six stages + feedback, per-stage design and what's real vs. stubbed.
+- [storage.md](docs/storage.md) — why SQLite + sqlite-vec, golden records/provenance, the in-memory default.
+- [preferences.md](docs/preferences.md) — per-saved-query taste centroids + NL summary, ranking, exploration/blender.
+- [auth.md](docs/auth.md) — identity-only multi-user auth and ownership enforcement.
+- [eval.md](docs/eval.md) — the PredictFn-based offline scoring harness.
+- [deployment.md](docs/deployment.md) — Docker compose (scheduler + Streamlit view), env config.
+- [guardrails.md](docs/guardrails.md) — how the `check.sh` gate enforces the mechanical rules.
+- [concepts/](docs/concepts/) — one-page explainers: RRF, taste vectors, entity resolution.
 
 ## Quick orientation
 
-- **Public entry**: [src/index.js](src/index.js) — `createCurator({ llm, search, storage, strategies, config })`
-- **Context factory**: [src/core/context.js](src/core/context.js) — `createContext()` builds `Ctx` (adapters + strategies + config + logger). Used by `createCurator`, eval, and tests. Query is a separate per-invocation param, not part of `Ctx`.
-- **Pipeline**: [src/core/pipeline.js](src/core/pipeline.js) — `runCuration(ctx, query, opts?)` calls stages in [src/stages/](src/stages/); returns `{ events, usage }`
-- **Types**: [src/core/types.js](src/core/types.js) — JSDoc typedefs only, no runtime
-- **Config**: [src/core/config.js](src/core/config.js) — `DEFAULTS` is the canonical, self-documenting source of truth for every tunable
-- **Logger**: [src/core/logger.js](src/core/logger.js) — levelled `ctx.logger` built from `config.logging.level`. Stages/strategies use it instead of `console.*`
-- **Prompts**: [src/prompts/](src/prompts/) — one file per prompt, exports a prompt function returning `{ system, user }` and a `*Schema` constant (JSON Schema for the response shape)
-- **Structured output**: [src/core/structured.js](src/core/structured.js) — `structuredChat(llm, { schema, ... })` wraps a JSON Schema as a tool, forces the LLM to call it, and returns typed `{ data, usage }`. All LLM call sites use this instead of raw `ctx.llm.chat()`
-- **Storage schema**: defined inline in each adapter — [src/adapters/storage/sqlite.js](src/adapters/storage/sqlite.js) and [src/adapters/storage/indexeddb.js](src/adapters/storage/indexeddb.js); state enum at [src/core/eventState.js](src/core/eventState.js); rationale in [docs/storage.md](docs/storage.md)
-- **Rank stage** combines filter + rank — there is no separate filter stage. Default chain `[rules, byDate]`; the TUI uses `[rules, llmRank]`. Rank strategies may both drop and reorder events. Don't reintroduce a filter stage. Details in [docs/strategies.md](docs/strategies.md)
-- **Apps**: front-ends live under [app/](app/) (sibling to `src/`). The TUI is the only one today — read [app/tui/CLAUDE.md](app/tui/CLAUDE.md) before touching it
+Code is `src/events_curator/`, layered low→high (see `[tool.importlinter]` in `pyproject.toml`): `enums` → `config` → `models` → (`storage` | `auth` | `llm` | `embed`) → the six stage modules (`expand`, `search`, `merge`, `dedup`, `rank`, `feedback`) → `pipeline` (orchestrator + builder) → `eval` → `apps` (telegram bot, scheduler server, streamlit view). Each module is sealed behind its `__init__.py`. Tests are in `tests/`.
 
 ## Dev commands
 
-- `npm install` — installs deps
-- `npm run typecheck` — runs `tsc --noEmit` against JSDoc-annotated JS
-- `npm run build:types` — emits `.d.ts` into `types/`
-- `npm test` — runs `node --test`
-- `npm run example:script` — one-shot run with argv/env
-- `npm run example:cli` — interactive REPL with feedback capture
+- `uv sync` — install (add `--extra llm|embed|store|bot` when wiring a real adapter).
+- `./check.sh` — the full gate: pyright (strict) + ruff (lint+format) + import-linter + file-size cap + pytest. Must be green.
+- `./check.sh --fast` — same minus pytest (runs automatically after each turn via the Stop hook).
+- `uv run pytest tests/test_pipeline.py` — a single test file.
 
 ## When making changes
 
@@ -64,4 +52,4 @@ The `docs/` directory is the canonical reference. Read the page that matches you
 2. Make the code change.
 3. Update the docs page if behavior/contract/shape changed (rule 1).
 4. Update this `CLAUDE.md` only if a rule, doc index entry, or quick-orientation pointer changed.
-5. Run `npm run typecheck` and `npm test`.
+5. Run `./check.sh` and make it green.

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Blocks a commit unless the full gate is green. Covers the case where a human (or
+# a tool other than the Claude Stop-hook) is the one committing. See docs/guardrails.md.
+#
+# Activated by: git config core.hooksPath .githooks   (run once per clone).
+set -uo pipefail
+
+echo "Running guardrail gate before commit…"
+if ! check.sh; then
+  echo
+  echo "✗ Commit blocked: the gate is red. Fix the errors above, or ask the assistant to." >&2
+  exit 1
+fi

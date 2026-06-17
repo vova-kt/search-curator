@@ -1,68 +1,74 @@
 # Architecture
 
-## One-line model
+## What this is
 
-A curator is a **pipeline** wrapping three pluggable I/O adapters (search, LLM, storage) and pluggable algorithmic strategies (query expansion, dedupe, rank). Adapters are how we talk to the outside world. Strategies are how we shape the result set. Stages are where the work happens. Filtering is not a separate stage — rank strategies may both drop and reorder events.
+A curator for recurring web searches: it takes a user's saved search ("jazz in
+Berlin"), runs it on the web, reconciles the results against everything seen
+before, and ranks what's left by what that particular search has learned to
+like. Upcoming events are the flagship example, but nothing in the pipeline is
+event-specific — the same machinery curates papers, jobs, or listings; a result
+carries free-form `tags` rather than a fixed category taxonomy. The work is the
+same whether it's driven by a Telegram bot, a scheduler, a Streamlit view, or the
+eval harness — so the curation logic lives in one UI-agnostic object and the UIs
+are thin shells around it.
 
-## Layers
+## The shape
 
-```
-┌────────────────────────────────────────────────────────┐
-│ front-ends       app/tui/  (web app planned)           │
-│ examples         examples/script.js                    │
-├────────────────────────────────────────────────────────┤
-│ public API       src/index.js  →  createCurator()      │
-├────────────────────────────────────────────────────────┤
-│ pipeline         src/core/pipeline.js                  │
-│                    └── src/stages/{searchByQueries,extract,   │
-│                                    dedupe,rank,        │
-│                                    feedback}.js        │
-├────────────────────────────────────────────────────────┤
-│ strategies       src/strategies/{queryExpansion,       │
-│                                  dedupe,rank}/         │
-├────────────────────────────────────────────────────────┤
-│ adapters         src/adapters/{search,llm,storage}/    │
-├────────────────────────────────────────────────────────┤
-│ core             src/core/{types,config,context,        │
-│                            progress,eventState,logger}  │
-│                  src/prompts/*.js                      │
-└────────────────────────────────────────────────────────┘
-```
-
-Higher layers depend on lower ones, never the other way around. Stages depend on adapter *interfaces*, not concrete adapters. `core/` has no I/O.
-
-## Why this shape
-
-- **Pluggability.** Every external dependency goes through an adapter interface. New search engine? Drop a file in `adapters/search/`, register it when constructing the curator. No core changes.
-- **Browser friendliness.** Subpath exports (`events-curator/adapters/storage/indexeddb`) mean the browser bundle never imports `better-sqlite3`. Same lib, different adapters.
-- **Testability.** Stages are pure functions of `(events, ctx, query)`. Build ctx once via `createContext()` with `memory` storage and stub adapters; no network or filesystem in tests.
-- **Replaceability where churn happens.** Prompts in their own files; strategies as pure functions. The parts most likely to change live where they're easy to edit without touching the pipeline.
-
-## Data flow
+One pipeline, six stages, plus a feedback path:
 
 ```
-Query  ─▶  searchByQueries  ─▶  extract  ─▶  dedupe  ─▶  rank  ─▶  Result
-            │              │            │          │
-            ▼              ▼            ▼          ▼
-         search         LLM +        strategies  strategies + savedQuery
-         adapters       worker pool              (drops + reorders)
-                                          │
-                                          ▼
-                                       storage  ◀── feedback
-                                                    (state transitions:
-                                                     shown / liked / disliked)
+expand → search → merge → dedup → store → rank
+                                            ↑
+                          feedback ─────────┘  (updates the preference profile)
 ```
 
-See [pipeline.md](pipeline.md) for per-stage contracts.
+The orchestrator that sequences them is
+`src/events_curator/pipeline/orchestrator.py`; the default wiring of concrete
+stage implementations is `pipeline/builder.py`. Each stage is a `typing.Protocol`
+in its own module (`expand/`, `search/`, …), so an implementation can be swapped
+without touching the orchestrator. See [pipeline.md](pipeline.md) for the
+per-stage design.
 
-## Browser story
+## Two decisions worth knowing
 
-Same code, different adapters:
+**Preferences are scoped to the saved query, not the user.** One person's "jazz
+in Berlin" and "trail races in the Alps" are different tastes and must learn
+independently. So a `PreferenceProfile` keys on `SavedQueryId`, and the
+orchestrator reads/writes preferences per query. This is the reason feedback
+carries a `saved_query_id` rather than just a user. See
+[preferences.md](preferences.md).
 
-| Concern  | Node                         | Browser                                        |
-| -------- | ---------------------------- | ---------------------------------------------- |
-| Storage  | `adapters/storage/sqlite`    | `adapters/storage/indexeddb`                   |
-| LLM      | `adapters/llm/openai` direct | `adapters/llm/openai` via thin user-side proxy |
-| Search   | direct HTTP                  | via the same proxy (key safety)                |
+**The DB is multi-user from day one.** A single SQLite file serves many callers,
+every saved query is owned by exactly one user, and the orchestrator refuses to
+run or accept feedback on a query the caller doesn't own. Identity is handled by
+a deliberately minimal auth module — see [auth.md](auth.md).
 
-The lib never stores anything server-side. See [storage.md](storage.md).
+## Module layering
+
+Modules are sealed (one public door each, `__init__.py`) and arranged in layers;
+a layer may import only layers below it. The contract is machine-checked by
+import-linter (see `[tool.importlinter]` in `pyproject.toml`) so the structure
+can't quietly tangle as the code grows under AI iteration.
+
+```
+apps                                  (UIs: bot, scheduler, streamlit)
+eval                                  (offline scoring harness)
+pipeline                              (orchestrator + builder)
+expand | search | merge | dedup | rank | feedback   (the stages)
+storage | auth | llm | embed          (ports + adapters)
+models                                (shared vocabulary)
+config
+enums
+```
+
+`auth` sits beside `storage` rather than above it: a principal's user id is
+derived deterministically from its credential, so authentication needs no
+storage lookup and the two never import each other. Why this matters mechanically
+is covered in [guardrails.md](guardrails.md).
+
+## Status
+
+Pre-`1.0`, nothing stable (see [CLAUDE.md](../CLAUDE.md)). The skeleton runs
+end-to-end with the real `IdentityExpander`, `RRFMerger`, and `InMemoryStorage`;
+`search`, `dedup`, `rank`, and `feedback` ship as stubs that raise with a pointer
+to the adapter to wire next.

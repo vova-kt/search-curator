@@ -1,0 +1,38 @@
+# Two thin UIs over one DB: the scheduler server and the Streamlit DB view.
+# They share a volume so the view sees what the server writes. Copy
+# .env.example -> .env to supply API keys and overrides.
+services:
+  server:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      STORAGE__DB_PATH: /data/events.db
+    volumes:
+      - events-data:/data
+    restart: unless-stopped
+
+  ui:
+    build: .
+    command:
+      - uv
+      - run
+      - streamlit
+      - run
+      - src/events_curator/apps/streamlit_app.py
+      - --server.port=8501
+      - --server.address=0.0.0.0
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      STORAGE__DB_PATH: /data/events.db
+    ports:
+      - "8501:8501"
+    volumes:
+      - events-data:/data
+    restart: unless-stopped
+
+volumes:
+  events-data:

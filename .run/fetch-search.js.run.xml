@@ -1,5 +1,0 @@
-<component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="fetch-search.js" type="NodeJSConfigurationType" nameIsGenerated="true" node-parameters="--env-file=./../../.env.dev" path-to-js-file="fetch-search.js" working-dir="$PROJECT_DIR$/eval/scripts">
-    <method v="2" />
-  </configuration>
-</component>

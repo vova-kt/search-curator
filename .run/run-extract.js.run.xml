@@ -1,5 +1,0 @@
-<component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="extract eval" type="NodeJSConfigurationType" node-parameters="--env-file=./../../../.env.dev" path-to-js-file="index.js" working-dir="$PROJECT_DIR$/eval/scripts/extract">
-    <method v="2" />
-  </configuration>
-</component>
