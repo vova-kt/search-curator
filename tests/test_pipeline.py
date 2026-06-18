@@ -22,6 +22,7 @@ from events_curator.expand import IdentityExpander
 from events_curator.merge import RRFMerger
 from events_curator.models import (
     CanonicalSearchResult,
+    CanonicalSearchResultId,
     DedupOutcome,
     ExpandedQuery,
     Feedback,
@@ -110,6 +111,31 @@ class FakeDeduper:
                     candidate=candidate,
                     decision=DedupDecision.INSERT_NEW,
                     canonical_search_result_id=canonical.id,
+                )
+            )
+        return outcomes
+
+
+class StableDeduper:
+    """Canonicalizes each candidate to a deterministic id (its url), so re-running
+    the same search reuses the same canonical records instead of minting new ones —
+    which lets the per-user "don't repeat" filter be observed across two runs."""
+
+    async def reconcile(
+        self, candidates: Sequence[RawSearchResult], results: SearchResultStore
+    ) -> list[DedupOutcome]:
+        outcomes: list[DedupOutcome] = []
+        for candidate in candidates:
+            cid = CanonicalSearchResultId(candidate.url)
+            await results.upsert_canonical(
+                CanonicalSearchResult(id=cid, url=candidate.url, title=candidate.title),
+                Provenance(canonical_search_result_id=cid),
+            )
+            outcomes.append(
+                DedupOutcome(
+                    candidate=candidate,
+                    decision=DedupDecision.INSERT_NEW,
+                    canonical_search_result_id=cid,
                 )
             )
         return outcomes
@@ -236,6 +262,33 @@ async def test_run_classifies_domain_once_and_caches_it() -> None:
     stored = await storage.queries.get(query.id)
     assert stored is not None
     assert stored.domain == "events"
+
+
+async def test_run_unseen_only_drops_already_shown_results() -> None:
+    storage = InMemoryStorage()
+    owner = UserId("u1")
+    query = SavedQuery(user_id=owner, text="jazz in berlin")
+    await storage.queries.upsert(query)
+    stages = Stages(
+        classifier=FakeClassifier(),
+        expander=IdentityExpander(),
+        search=FakeSearch(),
+        merger=RRFMerger(k=60),
+        deduper=StableDeduper(),  # stable ids so the same canonicals recur across runs
+        ranker=FakeRanker(),
+        learner=FakeLearner(),
+    )
+    pipeline = CurationPipeline(stages, storage)
+
+    full = await pipeline.run(query.id, _principal(owner))
+    assert len(full) == 2
+    await storage.results.mark_shown(owner, [full[0].canonical_search_result_id])
+
+    unseen = await pipeline.run(query.id, _principal(owner), unseen_only=True)
+
+    assert len(unseen) == 1
+    delivered = {r.canonical_search_result_id for r in unseen}
+    assert full[0].canonical_search_result_id not in delivered
 
 
 async def test_run_rejects_non_owner() -> None:

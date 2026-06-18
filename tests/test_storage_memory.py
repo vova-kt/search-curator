@@ -10,6 +10,8 @@ from events_curator.models import (
     CanonicalSearchResultId,
     Geo,
     Provenance,
+    SavedQuery,
+    UserId,
     Vector,
     new_saved_query_id,
 )
@@ -89,3 +91,31 @@ async def test_link_results_dedups_across_calls() -> None:
     await storage.results.link_results(qid, [ev.id])  # repeat
     results = await storage.results.results_for_query(qid)
     assert [c.id for c in results] == [ev.id]
+
+
+async def test_shown_ledger_accumulates_and_dedupes_per_user() -> None:
+    storage = InMemoryStorage()
+    user = UserId("tg:1")
+    a, b, c = (CanonicalSearchResultId(x) for x in ("a", "b", "c"))
+    await storage.results.mark_shown(user, [a, b])
+    await storage.results.mark_shown(user, [b, c])  # overlap is idempotent
+    assert await storage.results.shown_ids_for_user(user) == {a, b, c}
+
+
+async def test_shown_ledger_is_isolated_per_user() -> None:
+    storage = InMemoryStorage()
+    await storage.results.mark_shown(UserId("tg:1"), [CanonicalSearchResultId("a")])
+    assert await storage.results.shown_ids_for_user(UserId("tg:2")) == set()
+
+
+async def test_delete_query_removes_it() -> None:
+    storage = InMemoryStorage()
+    query = SavedQuery(user_id=UserId("u"), text="jazz")
+    await storage.queries.upsert(query)
+    await storage.queries.delete(query.id)
+    assert await storage.queries.get(query.id) is None
+
+
+async def test_delete_unknown_query_is_a_noop() -> None:
+    storage = InMemoryStorage()
+    await storage.queries.delete(new_saved_query_id())  # no error

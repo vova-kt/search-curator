@@ -35,13 +35,14 @@ The `docs/` directory is the canonical reference. Read the page that matches you
 - [eval.md](docs/eval.md) — the PredictFn-based offline scoring harness.
 - [configuration.md](docs/configuration.md) — file-first config, no in-code defaults, the LLM roles.
 - [deployment.md](docs/deployment.md) — Docker compose (scheduler + Streamlit view), the image, resetting.
+- [telegram.md](docs/telegram.md) — the chat bot: transport-neutral core, the new-search dialogue, scheduling, the don't-repeat ledger.
 - [observability.md](docs/observability.md) — watching a run: the live progress stream and the logging stack.
 - [guardrails.md](docs/guardrails.md) — how the `check.sh` gate enforces the mechanical rules.
 - [concepts/](docs/concepts/) — one-page explainers: RRF, taste vectors, entity resolution.
 
 ## Quick orientation
 
-Code is `src/events_curator/`, layered low→high (see `[tool.importlinter]` in `pyproject.toml`): `enums` → `config` → `models` → (`storage` | `auth` | `llm` | `embed`) → the six stage modules (`expand`, `search`, `merge`, `dedup`, `rank`, `feedback`) → `pipeline` (orchestrator + builder) → `eval` → `apps` (telegram bot, scheduler server, streamlit view). Each module is sealed behind its `__init__.py`. Tests are in `tests/`.
+Code is `src/events_curator/`, layered low→high (see `[tool.importlinter]` in `pyproject.toml`): `enums` → `config` → `models` → (`storage` | `auth` | `llm` | `embed`) → the stage-layer modules (`expand`, `search`, `merge`, `dedup`, `rank`, `feedback`, and `search_builder`) → `pipeline` (orchestrator + builder) → `eval` → `apps` (telegram bot, scheduler server, streamlit view). `search_builder` sits in the stage layer but is not a run stage — it's the frontend-neutral chat agent that gathers a new saved query. Inside `apps`, the bot is split into a transport-neutral core (`apps/bot`, `AssistantService`) under a thin aiogram adapter (`apps/telegram`). Each module is sealed behind its `__init__.py`. Tests are in `tests/`.
 
 ## Dev commands
 

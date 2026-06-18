@@ -81,6 +81,9 @@ class InMemorySavedQueryStore(SavedQueryStore):
     async def upsert(self, query: SavedQuery) -> None:
         self._queries[query.id] = query
 
+    async def delete(self, query_id: SavedQueryId) -> None:
+        self._queries.pop(query_id, None)
+
 
 class InMemorySearchResultStore(SearchResultStore):
     def __init__(self) -> None:
@@ -88,6 +91,7 @@ class InMemorySearchResultStore(SearchResultStore):
         self._canonical: dict[CanonicalSearchResultId, CanonicalSearchResult] = {}
         self._provenance: dict[CanonicalSearchResultId, Provenance] = {}
         self._results: dict[SavedQueryId, list[CanonicalSearchResultId]] = {}
+        self._shown: dict[UserId, set[CanonicalSearchResultId]] = {}
 
     async def add_raw(self, results: Sequence[RawSearchResult]) -> None:
         for ev in results:
@@ -133,6 +137,14 @@ class InMemorySearchResultStore(SearchResultStore):
     async def results_for_query(self, query_id: SavedQueryId) -> list[CanonicalSearchResult]:
         ids = self._results.get(query_id, [])
         return [self._canonical[i] for i in ids if i in self._canonical]
+
+    async def mark_shown(
+        self, user_id: UserId, search_result_ids: Sequence[CanonicalSearchResultId]
+    ) -> None:
+        self._shown.setdefault(user_id, set()).update(search_result_ids)
+
+    async def shown_ids_for_user(self, user_id: UserId) -> set[CanonicalSearchResultId]:
+        return set(self._shown.get(user_id, set()))
 
 
 class InMemoryFeedbackStore(FeedbackStore):

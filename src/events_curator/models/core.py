@@ -71,7 +71,10 @@ class SavedQuery(BaseModel):
     domain: str | None = None
     tags: list[str] = Field(default_factory=list[str])
     window: TimeWindow = Field(default_factory=TimeWindow)
-    schedule_cron: str | None = None  # None = manual / on-demand only
+    schedule_cron: str | None = None  # 5-field cron (UTC); None = manual / on-demand only
+    schedule_text: str | None = None  # human-readable echo of the schedule, for display/edit
+    max_results_shown: int = 10  # cap on results delivered to the user per run
+    last_run_at: datetime | None = None  # last scheduled delivery; the cron base ("skip missed")
     enabled: bool = True
     created_at: datetime = Field(default_factory=_now)
 

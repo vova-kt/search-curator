@@ -87,6 +87,7 @@ class CurationPipeline:
         saved_query_id: SavedQueryId,
         principal: Principal,
         *,
+        unseen_only: bool = False,
         on_progress: ProgressListener | None = None,
     ) -> list[RankedSearchResult]:
         query = await self._storage.queries.get(saved_query_id)
@@ -146,6 +147,14 @@ class CurationPipeline:
         report.done(Stage.STORE, f"Linked {len(canonical_ids)} result(s) to the saved query")
 
         results = await self._storage.results.results_for_query(query.id)
+        # The bot's "don't repeat" guarantee: drop canonicals already delivered to
+        # this user (via any saved query) before ranking, so a run only surfaces new
+        # material. Off by default — eval and the Streamlit view want the full set.
+        if unseen_only:
+            shown = await self._storage.results.shown_ids_for_user(principal.user_id)
+            before = len(results)
+            results = [r for r in results if r.id not in shown]
+            report.done(Stage.RANK, f"Filtered to {len(results)} unseen of {before} result(s)")
         profile = await self._storage.preferences.get(query.id) or PreferenceProfile(
             saved_query_id=query.id
         )

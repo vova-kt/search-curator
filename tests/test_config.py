@@ -56,6 +56,13 @@ def test_toml_loads_nested_groups_and_enum_keyed_roles() -> None:
     assert (judge.model, judge.prompt) == ("test-model", "test dedup judge prompt")
 
 
+def test_toml_loads_telegram_and_the_search_builder_role() -> None:
+    config = get_config()  # the committed config.test.toml baseline
+    assert config.telegram.owner_id == "42"
+    builder = config.llm.for_role(LLMRole.SEARCH_BUILDER)
+    assert builder.prompt == "test search builder prompt"
+
+
 def test_for_role_returns_that_call_sites_settings() -> None:
     roles = _roles()
     roles[LLMRole.RANK_RERANKER] = LLMRoleSettings(model="r", temperature=0.7, prompt="rp")

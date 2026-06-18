@@ -32,6 +32,21 @@ slice it needs — dedup takes a `SearchResultStore`, feedback a `FeedbackStore`
 which applies the date+city block before scoring. Ownership is enforced a layer up
 ([auth.md](auth.md)); storage just keys rows by `UserId` / `SavedQueryId`.
 
+## The per-user delivery ledger
+
+`SearchResultStore` also keeps a **shown ledger**: which canonical results a given
+user has already been delivered. It is keyed by `UserId`, not `SavedQueryId`, on
+purpose — the bot's "don't repeat" guarantee is that a result a user has seen is
+never sent again *even through a different saved query* (see
+[telegram.md](telegram.md)). `mark_shown` records a delivery and `shown_ids_for_user`
+reads it back; `mark_shown` is idempotent, so re-delivering the same id is a no-op
+rather than a duplicate row. The pipeline consults it via `run(..., unseen_only=True)`,
+which subtracts the ledger before ranking.
+
+`SavedQueryStore.delete` removes a query; the SQLite adapter also clears its
+result links (the ledger is per-user and outlives any one query, so it is left
+intact).
+
 ## SQLite row layout
 
 Each aggregate stores its full pydantic model as a JSON `data` column, so

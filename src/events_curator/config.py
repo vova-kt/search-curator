@@ -104,6 +104,15 @@ class ServerSettings(BaseModel):
     scheduler_tick_seconds: int
 
 
+class TelegramSettings(BaseModel):
+    """The Telegram bot adapter's settings. `owner_id` is the only chat allowed to
+    use the bot today (it goes public later); the bot's scheduler reuses
+    `[server].scheduler_tick_seconds` for its tick granularity."""
+
+    token: str  # BotFather token; empty disables the bot
+    owner_id: str  # the sole authorized Telegram user/chat id (as a string)
+
+
 class LoggingSettings(BaseModel):
     """The baseline log level applied at app startup by `setup_logging`. Individual
     loggers (e.g. a single pipeline stage, `events_curator.stage.<name>`) can be
@@ -128,6 +137,7 @@ class AppConfig(BaseSettings):
     storage: StorageSettings
     auth: AuthSettings
     server: ServerSettings
+    telegram: TelegramSettings
     logging: LoggingSettings
 
     @classmethod

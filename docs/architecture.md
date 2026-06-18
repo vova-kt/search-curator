@@ -49,7 +49,7 @@ import only layers below it. import-linter enforces this
 apps                                  (UIs: bot, scheduler, streamlit)
 eval                                  (offline scoring harness)
 pipeline                              (orchestrator + builder)
-expand | search | merge | dedup | rank | feedback   (the stages)
+expand | search | merge | dedup | rank | feedback | search_builder   (the stages)
 storage | auth | llm | embed          (ports + adapters)
 models                                (shared vocabulary)
 config
@@ -59,6 +59,13 @@ enums
 `auth` sits beside `storage`, not above it: a user id is derived deterministically
 from a credential, so authentication needs no storage lookup and the two never
 import each other.
+
+`search_builder` is a stage-layer module, not a stage of a run: it's the
+frontend-neutral chat agent that gathers a new saved query across several turns
+(see [telegram.md](telegram.md)). It sits in the stage layer because it depends on
+`llm` + `models` but nothing above. Inside `apps`, the chat bot is itself split —
+a transport-neutral core (`apps/bot`) under a thin aiogram adapter (`apps/telegram`)
+— so the curation logic stays free of any chat API.
 
 ## Adapters and extras
 

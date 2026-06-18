@@ -12,11 +12,13 @@ dependencies = [
     "sentence-transformers>=3.0",
     "sqlite-vec>=0.1.1",
     "aiogram>=3.7",
+    "croniter>=3.0",
     "watchdog>=6.0.0"
 ]
 
 [project.scripts]
 events-curator = "events_curator.apps.server:main"
+events-curator-bot = "events_curator.apps.telegram:main"
 
 [dependency-groups]
 dev = [
@@ -98,7 +100,7 @@ layers = [
     "events_curator.apps",
     "events_curator.eval",
     "events_curator.pipeline",
-    "events_curator.expand | events_curator.search | events_curator.merge | events_curator.dedup | events_curator.rank | events_curator.feedback",
+    "events_curator.expand | events_curator.search | events_curator.merge | events_curator.dedup | events_curator.rank | events_curator.feedback | events_curator.search_builder",
     "events_curator.storage | events_curator.auth | events_curator.llm | events_curator.embed",
     "events_curator.models",
     "events_curator.config",

@@ -118,4 +118,11 @@ CREATE TABLE IF NOT EXISTS preferences (
     disliked_centroid BLOB,
     data              TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS shown_results (
+    user_id                    TEXT NOT NULL,
+    canonical_search_result_id TEXT NOT NULL,
+    shown_at                   REAL NOT NULL,
+    PRIMARY KEY (user_id, canonical_search_result_id)
+);
 """

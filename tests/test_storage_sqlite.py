@@ -194,6 +194,32 @@ async def test_preference_round_trips_with_centroids(tmp_path: Path) -> None:
     assert fetched.like_count == 3
 
 
+async def test_shown_ledger_round_trips_idempotently(tmp_path: Path) -> None:
+    storage = await _open(tmp_path)
+    user = UserId("tg:1")
+    a, b = CanonicalSearchResultId("a"), CanonicalSearchResultId("b")
+    await storage.results.mark_shown(user, [a, b])
+    await storage.results.mark_shown(user, [b])  # idempotent re-mark
+    assert await storage.results.shown_ids_for_user(user) == {a, b}
+    assert await storage.results.shown_ids_for_user(UserId("tg:2")) == set()
+    await storage.close()
+
+
+async def test_delete_query_removes_it_and_its_links(tmp_path: Path) -> None:
+    storage = await _open(tmp_path)
+    ev = _canon("e", embedding=[1.0, 0.0])
+    query = SavedQuery(user_id=UserId("u"), text="jazz")
+    await storage.queries.upsert(query)
+    await _store_canon(storage, [ev])
+    await storage.results.link_results(query.id, [ev.id])
+
+    await storage.queries.delete(query.id)
+
+    assert await storage.queries.get(query.id) is None
+    assert await storage.results.results_for_query(query.id) == []
+    await storage.close()
+
+
 async def test_data_survives_close_and_reopen(tmp_path: Path) -> None:
     storage = await _open(tmp_path)
     user = User(id=UserId("u"), display_name="Op")

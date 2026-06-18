@@ -84,6 +84,7 @@ class LLMRole(StrEnum):
     DEDUP_JUDGE = "dedup_judge"  # tiebreak same-item judge
     RANK_RERANKER = "rank_reranker"  # preference reranker
     FEEDBACK_SUMMARY = "feedback_summary"  # NL taste-summary rewriter
+    SEARCH_BUILDER = "search_builder"  # chat agent that gathers a new saved query from a user
 
 
 class EmbedderKind(StrEnum):
@@ -95,6 +96,20 @@ class AuthScheme(StrEnum):
     TELEGRAM = "telegram"  # authenticate by Telegram chat id
     API_TOKEN = "api_token"  # static bearer token
     LOCAL = "local"  # single-operator local dev (auto-trusts)
+
+
+class BotAction(StrEnum):
+    """The closed set of chat-bot inline-button actions, carried in callback data.
+    Frontend-neutral (the Telegram adapter maps these onto aiogram callbacks);
+    result like/dislike is `FeedbackKind`, not duplicated here."""
+
+    CONFIRM = "confirm"  # accept the gathered new-search draft
+    EDIT = "edit"  # reopen the draft for free-form changes
+    DISCARD = "discard"  # throw the draft away
+    RUN_NOW = "run_now"  # execute a saved search immediately
+    DELETE = "delete"  # delete a saved search
+    NEW_SEARCH = "new_search"  # start the new-search flow
+    LIST_SEARCHES = "list_searches"  # show saved searches
 
 
 class RunMode(StrEnum):

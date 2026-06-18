@@ -3,6 +3,7 @@ search-result id. They are plain strings at runtime."""
 
 from __future__ import annotations
 
+import base64
 from typing import NewType
 from uuid import uuid4
 
@@ -18,7 +19,9 @@ Vector = list[float]
 
 
 def _fresh() -> str:
-    return uuid4().hex
+    # 22-char url-safe token (still a full 128-bit uuid4). Compact on purpose: two
+    # ids plus a prefix must fit Telegram's 64-byte inline-button callback data.
+    return base64.urlsafe_b64encode(uuid4().bytes).rstrip(b"=").decode("ascii")
 
 
 def new_user_id() -> UserId:

@@ -33,6 +33,11 @@ model = "test-model"
 temperature = 0.0
 prompt = "test feedback summary prompt"
 
+[llm.roles.search_builder]
+model = "test-model"
+temperature = 0.0
+prompt = "test search builder prompt"
+
 [embedding]
 kind = "bge_small"
 model = "BAAI/bge-small-en-v1.5"
@@ -69,6 +74,10 @@ api_token = ""
 host = "0.0.0.0"
 port = 8080
 scheduler_tick_seconds = 300
+
+[telegram]
+token = ""
+owner_id = "42"
 
 [logging]
 level = "INFO"

@@ -1,10 +1,31 @@
-# Two thin UIs over one DB: the scheduler server and the Streamlit DB view.
-# They share a volume so the view sees what the server writes. Copy
-# config.example.toml -> config.toml to supply API keys and overrides; it is
-# mounted read-only into each container (env vars still override any value).
+# Thin UIs over one shared SQLite volume. Config comes from config.toml
+# (copy config.example.toml -> config.toml), mounted read-only; env vars still
+# override any value.
+#
+# Pick exactly ONE scheduler — server and bot both advance last_run_at, so
+# running both against the same DB double-schedules. They live behind compose
+# profiles to make the choice explicit and mutually exclusive:
+#
+#   docker compose --profile headless up   # server  + ui (read-only viewer)
+#   docker compose --profile bot up         # bot     + ui (read-only viewer)
+#
+# `ui` has no profile, so it runs in either mode. Plain `docker compose up`
+# starts only `ui` (no scheduler) — choose a profile to schedule runs.
 services:
   server:
+    profiles: ["headless"]
     build: .
+    environment:
+      STORAGE__DB_PATH: /data/events.db
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+      - events-data:/data
+    restart: unless-stopped
+
+  bot:
+    profiles: ["bot"]
+    build: .
+    command: ["uv", "run", "events-curator-bot"]
     environment:
       STORAGE__DB_PATH: /data/events.db
     volumes:

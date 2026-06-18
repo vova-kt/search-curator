@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 
 from events_curator.models import (
     CanonicalSearchResult,
@@ -91,6 +91,11 @@ class SqliteSavedQueryStore(SavedQueryStore):
                 query.model_dump_json(),
             ),
         )
+        self._conn.commit()
+
+    async def delete(self, query_id: SavedQueryId) -> None:
+        self._conn.execute("DELETE FROM saved_queries WHERE id = ?", (query_id,))
+        self._conn.execute("DELETE FROM query_results WHERE query_id = ?", (query_id,))
         self._conn.commit()
 
 
@@ -181,6 +186,24 @@ class SqliteSearchResultStore(SearchResultStore):
             (query_id,),
         ).fetchall()
         return [load_canonical(r["data"], r["embedding"]) for r in rows]
+
+    async def mark_shown(
+        self, user_id: UserId, search_result_ids: Sequence[CanonicalSearchResultId]
+    ) -> None:
+        now = datetime.now(tz=UTC).timestamp()
+        self._conn.executemany(
+            "INSERT OR IGNORE INTO shown_results "
+            "(user_id, canonical_search_result_id, shown_at) VALUES (?, ?, ?)",
+            [(user_id, sid, now) for sid in search_result_ids],
+        )
+        self._conn.commit()
+
+    async def shown_ids_for_user(self, user_id: UserId) -> set[CanonicalSearchResultId]:
+        rows = self._conn.execute(
+            "SELECT canonical_search_result_id FROM shown_results WHERE user_id = ?",
+            (user_id,),
+        ).fetchall()
+        return {CanonicalSearchResultId(r["canonical_search_result_id"]) for r in rows}
 
 
 class SqliteFeedbackStore(FeedbackStore):

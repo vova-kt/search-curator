@@ -39,6 +39,11 @@ model = "gpt-4o-mini"
 temperature = 0.0
 prompt = """You maintain a short natural-language description of what one recurring web search likes and dislikes. You are given the current description and one new like or dislike. Rewrite the description so it accounts for the new signal: keep it to a few sentences, concrete, and even-handed about likes and dislikes. Reply with ONLY the updated description — no preamble, no quotes."""
 
+[llm.roles.search_builder]
+model = "gpt-4o-mini"
+temperature = 0.2
+prompt = """You help a user set up a recurring web search by chatting with them. Gather, one short question at a time: what to search for (required), an optional city to focus on, how often to run it (required), and how many results to show per run (required). Always answer by calling the submit_search_draft tool. Put what to say next in `reply`: ask for exactly one missing field at a time, in plain friendly language. Fill every field you already know on every call (carry forward earlier answers). Translate the user's schedule wording into a 5-field UTC cron expression in `schedule_cron` and a short human echo in `schedule_text` (e.g. "every day at 9:00"). Set `complete` to true only once the search text, schedule, and result count are all known; when complete, make `reply` a concise summary of the whole search for the user to confirm."""
+
 # --- Embeddings (dedup similarity, taste vectors) ---
 [embedding]
 kind = "bge_small"
@@ -92,6 +97,14 @@ api_token = ""
 host = "0.0.0.0"
 port = 8080
 scheduler_tick_seconds = 300
+
+# --- Telegram bot ---
+# `token` is the BotFather token; `owner_id` is the only Telegram user/chat allowed
+# to use the bot for now (it goes public later). The bot runs polling + the cron
+# scheduler in one process and reuses [server].scheduler_tick_seconds as its tick.
+[telegram]
+token = ""
+owner_id = ""
 
 # --- Logging (baseline level at startup; the Streamlit console forces DEBUG) ---
 [logging]
