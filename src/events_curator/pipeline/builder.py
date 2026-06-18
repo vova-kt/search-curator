@@ -35,9 +35,11 @@ from events_curator.pipeline.orchestrator import CurationPipeline, Stages
 from events_curator.rank import PreferenceRanker
 from events_curator.search import (
     FrontierWebSearch,
+    GeoBias,
     SearchEngine,
     UnconfiguredWebSearch,
     WebSearchBackend,
+    WebSearchTuning,
 )
 from events_curator.storage import InMemoryStorage, Storage
 
@@ -94,12 +96,26 @@ def build_llm(config: AppConfig) -> LLMClient:
 
 def build_search_backend(config: AppConfig) -> WebSearchBackend:
     """The backend the frontier engine drives: OpenAI's native web-search tool when
-    usable, else `UnconfiguredWebSearch`. Reuses the `llm` model/key from config."""
+    usable, else `UnconfiguredWebSearch`. Reuses the `llm` model/key and takes its
+    steering prompt and tool tuning from `[search]`."""
     if not _openai_ready(config):
         return UnconfiguredWebSearch()
     from events_curator.search import OpenAIWebSearch  # noqa: PLC0415  (keeps `llm` optional)
 
-    return OpenAIWebSearch(model=config.llm.model, api_key=config.llm.api_key)
+    loc = config.search.user_location
+    return OpenAIWebSearch(
+        model=config.llm.model,
+        api_key=config.llm.api_key,
+        instructions=config.search.instructions,
+        tuning=WebSearchTuning(
+            search_context_size=config.search.search_context_size,
+            reasoning_effort=config.search.reasoning_effort,
+            allowed_domains=list(config.search.allowed_domains),
+            location=GeoBias(
+                city=loc.city, country=loc.country, region=loc.region, timezone=loc.timezone
+            ),
+        ),
+    )
 
 
 def build_search_engine(config: AppConfig) -> SearchEngine:

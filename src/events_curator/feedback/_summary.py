@@ -18,14 +18,16 @@ def build_summary_prompt(
     system: str, current_summary: str, feedback: Feedback, result: CanonicalSearchResult
 ) -> list[ChatMessage]:
     verb = "LIKED" if feedback.kind is FeedbackKind.LIKE else "DISLIKED"
-    tags = ", ".join(result.tags) if result.tags else "none"
+    attrs = (
+        ", ".join(f"{k}={v}" for k, v in result.attributes.items()) if result.attributes else "none"
+    )
     current = current_summary.strip() or "(nothing learned yet)"
     body = (
         f"Current description:\n{current}\n\n"
         f"New signal — the user {verb} this result:\n"
         f"title: {result.title}\n"
         f"description: {result.description or 'none'}\n"
-        f"city: {result.geo.city or 'unknown'}; tags: {tags}\n"
+        f"city: {result.geo.city or 'unknown'}; attributes: {attrs}\n"
         f"reason: {feedback.reason or 'none given'}\n\n"
         "Return the updated description."
     )

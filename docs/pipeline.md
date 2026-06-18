@@ -72,9 +72,29 @@ OpenAI's Responses web-search tool (extra `llm`, re-exported lazily from the
 module door — same pattern as `SqliteStorage`). The builder's `build_search_backend`
 picks `OpenAIWebSearch` when an API key is set and the `llm` extra is installed, and
 `UnconfiguredWebSearch` — which raises a pointer to the extra — otherwise; so a
-default, keyless run still reaches the placeholder and stops there. The prompt/parse
-contract lives in `search/_extract.py`, kept dependency-free so it is unit-tested
-without the network.
+default, keyless run still reaches the placeholder and stops there.
+
+Extraction is **tool-shaped, not text-parsed**: the backend offers the model a
+`submit_results` function tool whose JSON schema is generated from `ExtractedResult`,
+and reads the typed arguments of that tool call rather than parsing a free-form
+reply — the row shape stays single-sourced in the Pydantic model. The model's
+steering prompt is config, not code (`[search].instructions`), so a deployment can
+retune it without a release. The prompt/tool/parse contract lives in
+`search/_extract.py`, kept dependency-free so it is unit-tested without the network.
+
+The row shape is **domain-agnostic on purpose**: beyond the typed fields it carries
+a free-form `attributes` map (`dict[str, str]`) for facts that matter to one kind of
+target but have no dedicated column — authors/journal for a paper, company/salary
+for a job, organizer for an event. The build prompt teaches the model how to fill it
+(lowercase snake_case keys, omit what it can't find), so adding a new search domain
+needs no schema change. This is the open-ended escape hatch noted under rule 4.
+
+The model's search behaviour is tuned from config, not hard-coded: `WebSearchTuning`
+(built in the search layer, bridged from `[search]` by the builder) maps onto the
+Responses `web_search` tool — `search_context_size`, a domain allow-list, and an
+approximate `user_location` geographic bias — plus `reasoning.effort`, whose values
+track the OpenAI `ReasoningEffort` levels. Empty knobs are omitted from the request
+rather than sent blank, so a minimal config asks for the tool's own defaults.
 
 ## merge — `merge/`
 
@@ -110,10 +130,13 @@ Two design choices worth their *why*:
   already sees it — no separate intra-batch pass. An exact-URL index
   short-circuits the common case of two candidates sharing one canonical URL.
 
-Survivorship is **first-non-empty-wins** (plus a tag union): the canonical keeps a
-field once any source fills it, later sightings only fill gaps, and provenance
-records the raw source that won each field. (No per-source trust scores yet, so
-"earliest complete sighting holds the field" is the order we can defend.)
+Survivorship is **first-non-empty-wins** (plus a key-wise `attributes` merge): the
+canonical keeps a field once any source fills it, later sightings only fill gaps,
+and provenance records the raw source that won each field. The open-ended
+`attributes` map folds at the sub-key level — an existing key is kept, a later
+sighting only contributes keys not already present — mirroring scalar survivorship.
+(No per-source trust scores yet, so "earliest complete sighting holds the field" is
+the order we can defend.)
 
 The cross-session lookup is the store's `nearest` (date+city window), so dedup
 depends only on the `SearchResultStore` read side. Thresholds live in `config.py`, not

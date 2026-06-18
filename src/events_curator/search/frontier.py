@@ -19,7 +19,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel, Field
 
-from events_curator.enums import SearchEngineKind
+from events_curator.enums import ReasoningEffort, SearchContextSize, SearchEngineKind
 from events_curator.models import ExpandedQuery, Geo, RawSearchResult
 
 # Query params that identify a click, not the resource. Dropped so the same item
@@ -57,16 +57,64 @@ class ExtractedResult(BaseModel):
     payload a `WebSearchBackend` returns, before engine bookkeeping (ids, source,
     rank) is attached."""
 
-    url: str
-    title: str
-    description: str = ""
-    starts_at: datetime | None = None
-    ends_at: datetime | None = None
-    city: str | None = None
-    country: str | None = None
-    venue: str | None = None
-    tags: list[str] = Field(default_factory=list[str])
-    price: str | None = None
+    url: str = Field(description="Absolute http(s) URL of the result's canonical page.")
+    title: str = Field(description="Concise human-readable name of the result.")
+    description: str = Field(default="", description="Short summary of the result, if available.")
+    starts_at: datetime | None = Field(
+        default=None, description="Start datetime in ISO 8601, or null if unknown."
+    )
+    ends_at: datetime | None = Field(
+        default=None, description="End datetime in ISO 8601, or null if unknown."
+    )
+    city: str | None = Field(default=None, description="City, or null if unknown.")
+    country: str | None = Field(default=None, description="Country, or null if unknown.")
+    venue: str | None = Field(default=None, description="Venue or place name, or null if unknown.")
+    image_url: str | None = Field(
+        default=None, description="Absolute http(s) URL of a representative image, or null."
+    )
+    attributes: dict[str, str] = Field(
+        default_factory=dict[str, str],
+        description=(
+            "Extra facts that matter for this kind of item but have no dedicated field, "
+            "as a flat map of string key to string value — e.g. authors and journal for a "
+            "paper, company and salary for a job, organizer for an event. Use lowercase "
+            "snake_case keys; omit anything you cannot find."
+        ),
+    )
+    price: str | None = Field(
+        default=None, description="Price as shown (e.g. '15€', 'free'), or null if unknown."
+    )
+
+
+class ExtractedResults(BaseModel):
+    """The batch a `WebSearchBackend` returns in one call. Its JSON schema defines
+    the `submit_results` function tool the model calls, so extraction reads typed
+    tool arguments instead of parsing free-form text."""
+
+    results: list[ExtractedResult] = Field(default_factory=list[ExtractedResult])
+
+
+class GeoBias(BaseModel):
+    """Optional geographic hint for a web-search call. Any field left blank is
+    omitted; an all-blank bias means "no location preference"."""
+
+    city: str = ""
+    country: str = ""  # ISO 3166 alpha-2
+    region: str = ""
+    timezone: str = ""  # IANA name, e.g. "Europe/Berlin"
+
+
+class WebSearchTuning(BaseModel):
+    """Provider-tuning for a native web-search call, resolved from `[search]` config
+    by the builder and handed to the backend: how hard the model thinks, how much
+    web context it pulls, an optional geographic bias, and an optional domain
+    allow-list. Provider-agnostic in shape; the OpenAI backend maps it onto the
+    Responses `web_search` tool and `reasoning.effort`."""
+
+    search_context_size: SearchContextSize
+    reasoning_effort: ReasoningEffort
+    allowed_domains: list[str] = Field(default_factory=list[str])
+    location: GeoBias = Field(default_factory=GeoBias)
 
 
 class WebSearchBackend(Protocol):
@@ -101,7 +149,8 @@ class FrontierWebSearch:
                     starts_at=item.starts_at,
                     ends_at=item.ends_at,
                     geo=Geo(city=item.city, country=item.country, venue=item.venue),
-                    tags=item.tags,
+                    image_url=item.image_url,
+                    attributes=dict(item.attributes),
                     price=item.price,
                     rank=len(results),
                 )

@@ -56,7 +56,7 @@ def _cand(
     url: str | None = None,
     city: str | None = "Berlin",
     description: str = "",
-    tags: list[str] | None = None,
+    attributes: dict[str, str] | None = None,
     starts_at: datetime | None = DATE,
 ) -> RawSearchResult:
     return RawSearchResult(
@@ -66,7 +66,7 @@ def _cand(
         description=description,
         starts_at=starts_at,
         geo=Geo(city=city),
-        tags=tags or [],
+        attributes=attributes or {},
     )
 
 
@@ -262,26 +262,27 @@ def test_doc_text_joins_title_and_description() -> None:
 
 
 def test_new_golden_attributes_populated_fields() -> None:
-    candidate = _cand("Show", description="blurb", tags=["jazz"])
+    candidate = _cand("Show", description="blurb", attributes={"genre": "jazz"})
     canonical, provenance = new_golden(candidate, [1.0, 0.0])
 
     assert canonical.embedding == [1.0, 0.0]
     assert canonical.source_search_result_ids == [candidate.id]
     assert provenance.field_sources["title"] == candidate.id
-    assert provenance.field_sources["tags"] == candidate.id
+    assert provenance.field_sources["attributes"] == candidate.id
     assert provenance.field_sources["geo"] == candidate.id
 
 
-def test_merge_into_fills_gaps_unions_tags_and_records_sources() -> None:
-    base = _cand("Show", description="", tags=["jazz"])
+def test_merge_into_fills_gaps_merges_attributes_and_records_sources() -> None:
+    base = _cand("Show", description="", attributes={"genre": "jazz"})
     canonical, provenance = new_golden(base, [1.0, 0.0])
-    extra = _cand("Show", description="late night set", tags=["live"], city="Berlin")
+    extra = _cand("Show", description="late set", attributes={"genre": "rock", "venue": "A"})
 
     merged, merged_prov = merge_into(canonical, provenance, extra)
 
     assert merged.title == "Show"  # kept
-    assert merged.description == "late night set"  # filled
-    assert set(merged.tags) == {"jazz", "live"}  # unioned
+    assert merged.description == "late set"  # filled
+    # key-wise fill: base keeps its value for an existing key, new keys are added.
+    assert merged.attributes == {"genre": "jazz", "venue": "A"}
     assert merged.source_search_result_ids == [base.id, extra.id]
     assert merged_prov.field_sources["description"] == extra.id
     # "title" was already set by the base source; the merge must not steal it.

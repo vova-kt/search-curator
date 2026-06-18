@@ -25,11 +25,13 @@ _FENCE = re.compile(r"\A```[a-zA-Z0-9]*\n(.*)\n```\Z", re.DOTALL)
 
 def _render(index: int, result: CanonicalSearchResult) -> str:
     when = result.starts_at.date().isoformat() if result.starts_at else "unknown"
-    tags = ", ".join(result.tags) if result.tags else "none"
+    attrs = (
+        ", ".join(f"{k}={v}" for k, v in result.attributes.items()) if result.attributes else "none"
+    )
     return (
         f"{index}. {result.title}\n"
         f"   description: {result.description or 'none'}\n"
-        f"   date: {when}; city: {result.geo.city or 'unknown'}; tags: {tags}"
+        f"   date: {when}; city: {result.geo.city or 'unknown'}; attributes: {attrs}"
     )
 
 

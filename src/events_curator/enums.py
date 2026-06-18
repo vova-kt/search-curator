@@ -48,6 +48,27 @@ class SearchEngineKind(StrEnum):
     SERPER = "serper"
 
 
+class SearchContextSize(StrEnum):
+    """How much web context a frontier model's native web-search tool pulls per
+    call (OpenAI `web_search.search_context_size`): the cost/recall dial."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class ReasoningEffort(StrEnum):
+    """A reasoning model's thinking budget (OpenAI `reasoning.effort`). Mirrors the
+    values the Responses API accepts; not every model supports every level."""
+
+    NONE = "none"
+    MINIMAL = "minimal"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+
+
 class LLMProvider(StrEnum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"

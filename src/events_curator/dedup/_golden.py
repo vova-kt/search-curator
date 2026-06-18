@@ -1,9 +1,9 @@
 """Golden-record survivorship for dedup: fold a fresh candidate into one canonical
 result and track the provenance of which raw source won each field.
 
-Survivorship here is first-non-empty-wins (plus a tag union): the canonical keeps
-a field once any source has filled it, and provenance records the raw result that
-did. Without per-source trust scores this is the order we can defend — the
+Survivorship here is first-non-empty-wins (plus an attributes merge): the canonical
+keeps a field once any source has filled it, and provenance records the raw result
+that did. Without per-source trust scores this is the order we can defend — the
 earliest complete sighting holds the field, later sightings only fill gaps. Fields
 inherited unchanged from a prior-session canonical carry no provenance entry this
 run (their origin lives in the run that first set them; the store's read side does
@@ -21,8 +21,8 @@ from events_curator.models import (
 )
 
 # Top-level canonical fields settled by first-non-empty survivorship. `geo` and
-# `tags` are folded specially (subfield fill / set union) below.
-_SCALAR_FIELDS = ("title", "description", "starts_at", "ends_at", "price")
+# `attributes` are folded specially (subfield fill / key-wise merge) below.
+_SCALAR_FIELDS = ("title", "description", "starts_at", "ends_at", "image_url", "price")
 
 
 def doc_text(record: RawSearchResult | CanonicalSearchResult) -> str:
@@ -40,11 +40,13 @@ def _has_geo(geo: Geo) -> bool:
     return any(not _is_empty(v) for v in geo.model_dump().values())
 
 
-def _union_tags(existing: list[str], extra: list[str]) -> list[str]:
-    merged = dict.fromkeys(existing)
-    for tag in extra:
-        merged.setdefault(tag)
-    return list(merged)
+def _merge_attributes(base: dict[str, str], extra: dict[str, str]) -> dict[str, str]:
+    """Key-wise fill: keep every key the base already has, add keys only `extra`
+    carries. Mirrors scalar survivorship at the sub-key level."""
+    merged = dict(base)
+    for key, value in extra.items():
+        merged.setdefault(key, value)
+    return merged
 
 
 def _merge_geo(base: Geo, extra: Geo) -> tuple[Geo, bool]:
@@ -69,7 +71,8 @@ def new_golden(
         starts_at=candidate.starts_at,
         ends_at=candidate.ends_at,
         geo=candidate.geo.model_copy(deep=True),
-        tags=list(candidate.tags),
+        image_url=candidate.image_url,
+        attributes=dict(candidate.attributes),
         price=candidate.price,
         source_search_result_ids=[candidate.id],
         embedding=embedding,
@@ -77,8 +80,8 @@ def new_golden(
         last_seen_at=candidate.fetched_at,
     )
     sources = {f: candidate.id for f in _SCALAR_FIELDS if not _is_empty(getattr(candidate, f))}
-    if candidate.tags:
-        sources["tags"] = candidate.id
+    if candidate.attributes:
+        sources["attributes"] = candidate.id
     if _has_geo(candidate.geo):
         sources["geo"] = candidate.id
     return canonical, Provenance(canonical_search_result_id=canonical.id, field_sources=sources)
@@ -87,9 +90,9 @@ def new_golden(
 def merge_into(
     target: CanonicalSearchResult, provenance: Provenance, candidate: RawSearchResult
 ) -> tuple[CanonicalSearchResult, Provenance]:
-    """Fold `candidate` into `target`: fill empty golden fields, union tags, append
-    the source id, and advance the seen-at window. Returns the updated record and
-    provenance (the original inputs are left untouched)."""
+    """Fold `candidate` into `target`: fill empty golden fields, merge attributes,
+    append the source id, and advance the seen-at window. Returns the updated record
+    and provenance (the original inputs are left untouched)."""
     updates: dict[str, object] = {}
     sources = dict(provenance.field_sources)
     for field in _SCALAR_FIELDS:
@@ -100,10 +103,10 @@ def merge_into(
     if geo_filled:
         updates["geo"] = geo
         sources.setdefault("geo", candidate.id)
-    tags = _union_tags(target.tags, list(candidate.tags))
-    if tags != target.tags:
-        updates["tags"] = tags
-        sources.setdefault("tags", candidate.id)
+    attributes = _merge_attributes(target.attributes, candidate.attributes)
+    if attributes != target.attributes:
+        updates["attributes"] = attributes
+        sources.setdefault("attributes", candidate.id)
     if candidate.id not in target.source_search_result_ids:
         updates["source_search_result_ids"] = [*target.source_search_result_ids, candidate.id]
     updates["last_seen_at"] = max(target.last_seen_at, candidate.fetched_at)

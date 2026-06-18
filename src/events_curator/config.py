@@ -22,6 +22,8 @@ from events_curator.enums import (
     LLMRole,
     LogLevel,
     NoisyLogger,
+    ReasoningEffort,
+    SearchContextSize,
     SearchEngineKind,
 )
 
@@ -60,10 +62,26 @@ class EmbeddingSettings(BaseModel):
     dimensions: int
 
 
+class UserLocationSettings(BaseModel):
+    """Optional geographic bias for the native web-search tool. Any field left blank
+    is omitted; all-blank means no location preference (e.g. a non-geographic
+    target like papers)."""
+
+    city: str
+    country: str  # ISO 3166 alpha-2
+    region: str
+    timezone: str  # IANA name, e.g. "Europe/Berlin"
+
+
 class SearchSettings(BaseModel):
     engine: SearchEngineKind
     max_results_per_query: int
     rrf_k: int  # Reciprocal Rank Fusion constant
+    search_context_size: SearchContextSize  # web_search cost/recall dial
+    reasoning_effort: ReasoningEffort  # the web-search model's thinking budget
+    allowed_domains: list[str]  # restrict web_search to these domains; empty = no restriction
+    user_location: UserLocationSettings
+    instructions: str  # system prompt steering the native web-search backend
 
 
 class DedupSettings(BaseModel):

@@ -21,8 +21,10 @@ from events_curator.models import ExpandedQuery, RawSearchResult
 from events_curator.search.frontier import (
     ExtractedResult,
     FrontierWebSearch,
+    GeoBias,
     UnconfiguredWebSearch,
     WebSearchBackend,
+    WebSearchTuning,
     canonicalize_url,
 )
 
@@ -39,10 +41,12 @@ class SearchEngine(Protocol):
 __all__ = [
     "ExtractedResult",
     "FrontierWebSearch",
+    "GeoBias",
     "OpenAIWebSearch",
     "SearchEngine",
     "UnconfiguredWebSearch",
     "WebSearchBackend",
+    "WebSearchTuning",
     "canonicalize_url",
 ]
 

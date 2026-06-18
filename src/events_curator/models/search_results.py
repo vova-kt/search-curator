@@ -46,7 +46,9 @@ class RawSearchResult(BaseModel):
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     geo: Geo = Field(default_factory=Geo)
-    tags: list[str] = Field(default_factory=list[str])
+    image_url: str | None = None
+    # open-ended per-domain facts (authors, organizer, salary, …) — the rule-4 escape hatch
+    attributes: dict[str, str] = Field(default_factory=dict[str, str])
     price: str | None = None
     rank: int = 0  # position within its originating result list (for RRF)
     score: float | None = None  # engine-reported relevance, if any
@@ -61,7 +63,9 @@ class CanonicalSearchResult(BaseModel):
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     geo: Geo = Field(default_factory=Geo)
-    tags: list[str] = Field(default_factory=list[str])
+    image_url: str | None = None
+    # open-ended per-domain facts (authors, organizer, salary, …) — the rule-4 escape hatch
+    attributes: dict[str, str] = Field(default_factory=dict[str, str])
     price: str | None = None
     source_search_result_ids: list[RawSearchResultId] = Field(
         default_factory=list[RawSearchResultId]

@@ -1,6 +1,7 @@
 """FrontierWebSearch and the dependency-free extraction helpers (no `llm` extra):
 the engine shapes a backend's rows into ranked RawSearchResults, canonicalizing
-URLs at ingestion; parse_extracted reads a model's JSON reply tolerantly."""
+URLs at ingestion; the `submit_results` tool schema is derived from ExtractedResult
+and parse_submission reads its call arguments tolerantly."""
 
 from __future__ import annotations
 
@@ -17,7 +18,13 @@ from events_curator.search import (
     UnconfiguredWebSearch,
     canonicalize_url,
 )
-from events_curator.search._extract import build_search_prompt, parse_extracted
+from events_curator.search._extract import (
+    SUBMIT_TOOL_NAME,
+    build_search_prompt,
+    parse_submission,
+    submit_tool,
+)
+from events_curator.search.frontier import ExtractedResults
 
 
 class _Backend:
@@ -46,7 +53,8 @@ async def test_engine_maps_rows_to_raw_results() -> None:
                 city="Berlin",
                 country="DE",
                 venue="A-Trane",
-                tags=["jazz"],
+                image_url="https://example.com/poster.jpg",
+                attributes={"genre": "jazz", "organizer": "A-Trane"},
                 price="15€",
             )
         ]
@@ -59,7 +67,8 @@ async def test_engine_maps_rows_to_raw_results() -> None:
     assert result.url == "https://example.com/show"  # www/tracking/fragment/slash gone
     assert result.geo.city == "Berlin"
     assert result.geo.venue == "A-Trane"
-    assert result.tags == ["jazz"]
+    assert result.image_url == "https://example.com/poster.jpg"
+    assert result.attributes == {"genre": "jazz", "organizer": "A-Trane"}
     assert result.rank == 0
 
 
@@ -107,20 +116,28 @@ def test_canonicalize_url(raw: str, expected: str) -> None:
     assert canonicalize_url(raw) == expected
 
 
-def test_parse_extracted_reads_results_object() -> None:
-    text = '{"results": [{"url": "https://a.com", "title": "A"}]}'
-    rows = parse_extracted(text, max_results=10)
+def test_submit_tool_schema_is_derived_from_extracted_result() -> None:
+    parameters = ExtractedResults.model_json_schema()
+    tool = submit_tool()
+    assert tool["type"] == "function"
+    assert tool["name"] == SUBMIT_TOOL_NAME
+    assert tool["parameters"] == parameters
+    assert "results" in parameters["properties"]
+    # The row shape is single-sourced from ExtractedResult, referenced via $defs.
+    row_props = parameters["$defs"]["ExtractedResult"]["properties"]
+    assert "attributes" in row_props
+    assert "image_url" in row_props
+    assert "tags" not in row_props  # dropped in favor of the open-ended attributes map
+
+
+def test_parse_submission_reads_results_array() -> None:
+    arguments = '{"results": [{"url": "https://a.com", "title": "A"}]}'
+    rows = parse_submission(arguments, max_results=10)
     assert [r.url for r in rows] == ["https://a.com"]
 
 
-def test_parse_extracted_reads_bare_array_in_code_fence() -> None:
-    text = '```json\n[{"url": "https://a.com", "title": "A"}]\n```'
-    rows = parse_extracted(text, max_results=10)
-    assert [r.title for r in rows] == ["A"]
-
-
-def test_parse_extracted_skips_invalid_rows_and_truncates() -> None:
-    text = (
+def test_parse_submission_skips_invalid_rows_and_truncates() -> None:
+    arguments = (
         '{"results": ['
         '{"url": "https://a.com", "title": "A"},'
         '{"title": "no url"},'  # invalid: url is required -> skipped
@@ -129,13 +146,17 @@ def test_parse_extracted_skips_invalid_rows_and_truncates() -> None:
         '{"url": "https://c.com", "title": "C"}'
         "]}"
     )
-    rows = parse_extracted(text, max_results=2)
+    rows = parse_submission(arguments, max_results=2)
     assert [r.url for r in rows] == ["https://a.com", "https://b.com"]
 
 
-def test_parse_extracted_raises_on_malformed_payload() -> None:
+def test_parse_submission_without_results_array_is_empty() -> None:
+    assert parse_submission('{"other": 1}', max_results=10) == []
+
+
+def test_parse_submission_raises_on_malformed_arguments() -> None:
     with pytest.raises(json.JSONDecodeError):
-        parse_extracted("not json at all", max_results=10)
+        parse_submission("not json at all", max_results=10)
 
 
 def test_build_search_prompt_carries_query_and_budget() -> None:

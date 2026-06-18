@@ -32,6 +32,16 @@ dimensions = 384
 engine = "frontier_native"
 max_results_per_query = 20
 rrf_k = 60
+search_context_size = "medium"
+reasoning_effort = "medium"
+allowed_domains = []
+instructions = "test search instructions"
+
+[search.user_location]
+city = ""
+country = ""
+region = ""
+timezone = ""
 
 [dedup]
 auto_merge_threshold = 0.88
