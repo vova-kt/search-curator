@@ -79,14 +79,17 @@ selects the scheduler (`headless` or `bot`); `DEPLOY_BRANCH` overrides the branc
 
 Schedule it with the systemd units beside the script
 ([`events-curator-deploy.service`](../scripts/events-curator-deploy.service) +
-[`.timer`](../scripts/events-curator-deploy.timer)) — point `WorkingDirectory`
-at the checkout, then:
+[`.timer`](../scripts/events-curator-deploy.timer)). They ship *inside* the repo,
+so there's nothing to copy: clone to `/opt/events-curator` (the path baked into
+the symlink commands and the service's `WorkingDirectory` — adjust both if you
+clone elsewhere), then symlink the in-repo units into systemd:
 
 ```sh
+# expose the unit + timer to systemd (symlink, so `git pull` updates them in place)
 sudo ln -s /opt/events-curator/scripts/events-curator-deploy.{service,timer} /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now events-curator-deploy.timer
-journalctl -u events-curator-deploy.service -f   # watch deploys
+sudo systemctl daemon-reload                       # pick up the new units
+sudo systemctl enable --now events-curator-deploy.timer  # start now + on every boot
+journalctl -u events-curator-deploy.service -f     # watch deploys
 ```
 
 The host's checkout is treated as read-only: the script does a detached, forced
