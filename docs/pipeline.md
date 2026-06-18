@@ -16,6 +16,15 @@ phrasings), searched in parallel and fused. Today `IdentityExpander` returns the
 user's text unchanged — enough to exercise the pipeline; the LLM fan-out replaces
 it.
 
+Alongside expansion, the orchestrator resolves the query's **attribute domain** —
+which catalog entry (events, papers, jobs, …) governs the `attributes` keys search
+extracts. The `domain_classifier` LLM role picks one catalog key from the query text
+(`search/_classify.py`, submit-tool pattern, falling back to a default on a
+malformed/unknown choice). It's derived once and cached on `SavedQuery.domain`, so a
+recurring query classifies on its first run only; the trace groups under the expand
+stage logger. Why query-derived and cached, not configured: one deployment can host
+queries spanning different domains, and re-asking the model every run would be waste.
+
 ## search — `search/`
 
 Run one expanded query against the web and extract candidate results. The approach
@@ -50,12 +59,14 @@ per-query `[search].prompt` template.
 The row shape is **domain-agnostic on purpose**: beyond typed fields it carries a
 free-form `attributes` map (`dict[str, str]`) for facts with no dedicated column —
 authors/journal for a paper, company/salary for a job, organizer for an event. But
-the *allowed keys* are a closed, configured vocabulary, not whatever the model feels
-like inventing: `[search].attributes` maps each key to a fill instruction and a UI
-emoji, and `submit_tool` narrows the generated schema's open `attributes` object to
-exactly those keys (each described by its instruction, `additionalProperties: false`).
-Swapping the config — not the code — retargets the pipeline at a new domain. This is
-the per-deployment escape hatch of rule 4.
+the *allowed keys* are a closed vocabulary, not whatever the model feels like
+inventing: the static catalog in `search/attributes.py` groups keys by domain, each
+with a fill instruction and a UI emoji. Search offers only the keys for *this*
+query's classified domain — `submit_tool` narrows the generated schema's open
+`attributes` object to exactly those keys (each described by its instruction,
+`additionalProperties: false`). Adding or retargeting a domain is an edit to that
+catalog: a deliberate code change, since the keys are a closed set (rule 4), not
+per-deployment config.
 
 Search behaviour is tuned from config: `WebSearchTuning` maps onto the Responses
 `web_search` tool (`search_context_size`, a domain allow-list) plus

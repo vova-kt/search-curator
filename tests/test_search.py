@@ -26,12 +26,14 @@ class _Backend:
         self._rows = rows
         self.calls: list[tuple[str, int]] = []
         self.locations: list[GeoBias] = []
+        self.domains: list[str] = []
 
     async def find(
-        self, query: str, *, max_results: int, location: GeoBias
+        self, query: str, *, max_results: int, location: GeoBias, domain: str
     ) -> list[ExtractedResult]:
         self.calls.append((query, max_results))
         self.locations.append(location)
+        self.domains.append(domain)
         return self._rows
 
 
@@ -57,10 +59,13 @@ async def test_engine_maps_rows_to_raw_results() -> None:
             )
         ]
     )
-    [result] = await FrontierWebSearch(backend).search(query, location=GeoBias(city="Berlin"))
+    [result] = await FrontierWebSearch(backend).search(
+        query, location=GeoBias(city="Berlin"), domain="events"
+    )
 
     assert backend.calls == [("jazz in berlin", 20)]
     assert backend.locations == [GeoBias(city="Berlin")]  # the engine threads it to the backend
+    assert backend.domains == ["events"]  # and the domain too
     assert result.source_query_id == query.id
     assert result.source_engine is SearchEngineKind.FRONTIER_NATIVE
     assert result.url == "https://example.com/show"  # www/tracking/fragment/slash gone
@@ -79,14 +84,16 @@ async def test_engine_ranks_contiguously_and_skips_blank_urls() -> None:
             ExtractedResult(url="https://b.com", title="b"),
         ]
     )
-    results = await FrontierWebSearch(backend).search(_query(), location=GeoBias())
+    results = await FrontierWebSearch(backend).search(_query(), location=GeoBias(), domain="events")
 
     assert [(r.url, r.rank) for r in results] == [("https://a.com", 0), ("https://b.com", 1)]
 
 
 async def test_engine_truncates_to_max_results() -> None:
     backend = _Backend([ExtractedResult(url=f"https://e.com/{i}", title=str(i)) for i in range(5)])
-    results = await FrontierWebSearch(backend, max_results=2).search(_query(), location=GeoBias())
+    results = await FrontierWebSearch(backend, max_results=2).search(
+        _query(), location=GeoBias(), domain="events"
+    )
 
     assert [r.rank for r in results] == [0, 1]
     assert backend.calls == [("jazz in berlin", 2)]

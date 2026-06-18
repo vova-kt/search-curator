@@ -51,14 +51,31 @@ from events_curator.storage import (
 )
 
 
+class FakeClassifier:
+    """Returns a fixed domain and counts how often it is asked (to prove caching)."""
+
+    def __init__(self, domain: str = "events") -> None:
+        self.domain = domain
+        self.calls = 0
+
+    async def classify(self, text: str) -> str:
+        del text
+        self.calls += 1
+        return self.domain
+
+
 class FakeSearch:
     kind = SearchEngineKind.FRONTIER_NATIVE
 
     def __init__(self) -> None:
         self.locations: list[GeoBias] = []
+        self.domains: list[str] = []
 
-    async def search(self, query: ExpandedQuery, *, location: GeoBias) -> list[RawSearchResult]:
+    async def search(
+        self, query: ExpandedQuery, *, location: GeoBias, domain: str
+    ) -> list[RawSearchResult]:
         self.locations.append(location)
+        self.domains.append(domain)
         return [
             RawSearchResult(
                 source_query_id=query.id,
@@ -137,8 +154,9 @@ class FakeLearner:
         return profile
 
 
-def _stages_with(search: FakeSearch) -> Stages:
+def _stages_with(search: FakeSearch, classifier: FakeClassifier | None = None) -> Stages:
     return Stages(
+        classifier=classifier or FakeClassifier(),
         expander=IdentityExpander(),
         search=search,
         merger=RRFMerger(k=60),
@@ -198,6 +216,26 @@ async def test_run_defaults_to_empty_location_without_user_row() -> None:
     await pipeline.run(query.id, _principal(owner))
 
     assert search.locations == [GeoBias()]
+
+
+async def test_run_classifies_domain_once_and_caches_it() -> None:
+    storage = InMemoryStorage()
+    owner = UserId("u1")
+    query = SavedQuery(user_id=owner, text="jazz in berlin")
+    await storage.queries.upsert(query)
+    search = FakeSearch()
+    classifier = FakeClassifier(domain="events")
+    pipeline = CurationPipeline(_stages_with(search, classifier), storage)
+
+    await pipeline.run(query.id, _principal(owner))
+    await pipeline.run(query.id, _principal(owner))
+
+    # Classified on the first run, cached on the query for the second.
+    assert classifier.calls == 1
+    assert search.domains == ["events", "events"]
+    stored = await storage.queries.get(query.id)
+    assert stored is not None
+    assert stored.domain == "events"
 
 
 async def test_run_rejects_non_owner() -> None:

@@ -8,6 +8,11 @@ provider = "openai"
 api_key = ""
 model = "test-model"
 
+[llm.roles.domain_classifier]
+model = "test-model"
+temperature = 0.0
+prompt = "test domain classifier prompt"
+
 [llm.roles.dedup_judge]
 model = "test-model"
 temperature = 0.0
@@ -37,14 +42,6 @@ reasoning_effort = "medium"
 allowed_domains = []
 instructions = "test search instructions"
 prompt = "Find up to {max_results} results for: {query}"
-
-[search.attributes.organizer]
-instruction = "Who runs or hosts the item"
-emoji = "🏛️"
-
-[search.attributes.genre]
-instruction = "Style or category of the item"
-emoji = "🎵"
 
 [dedup]
 auto_merge_threshold = 0.88

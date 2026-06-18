@@ -11,7 +11,6 @@ door's lazy re-export, so the base `search` import never needs the extra — and
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import cast
 
 from openai import AsyncOpenAI
@@ -29,6 +28,7 @@ from events_curator.search._extract import (
     parse_submission,
     submit_tool,
 )
+from events_curator.search.attributes import instructions_for
 from events_curator.search.frontier import (
     ExtractedResult,
     GeoBias,
@@ -45,7 +45,6 @@ class OpenAIWebSearch(WebSearchBackend):
         instructions: str,
         prompt: str,
         tuning: WebSearchTuning,
-        attribute_instructions: Mapping[str, str],
         api_key: str = "",
         client: AsyncOpenAI | None = None,
     ) -> None:
@@ -53,11 +52,10 @@ class OpenAIWebSearch(WebSearchBackend):
         self._instructions = instructions
         self._prompt = prompt
         self._tuning = tuning
-        self._attribute_instructions = attribute_instructions
         self._client = client or AsyncOpenAI(api_key=api_key)
 
     async def find(
-        self, query: str, *, max_results: int, location: GeoBias
+        self, query: str, *, max_results: int, location: GeoBias, domain: str
     ) -> list[ExtractedResult]:
         response = await self._client.responses.create(
             model=self._model,
@@ -65,7 +63,7 @@ class OpenAIWebSearch(WebSearchBackend):
             input=build_search_prompt(self._prompt, query, max_results=max_results),
             tools=[
                 self._web_search_tool(location),
-                cast("FunctionToolParam", submit_tool(self._attribute_instructions)),
+                cast("FunctionToolParam", submit_tool(instructions_for(domain))),
             ],
             reasoning=Reasoning(effort=self._tuning.reasoning_effort.value),
         )

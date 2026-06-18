@@ -131,5 +131,4 @@ def console_principal() -> Principal | None:
     if principal is None:
         st.error("Authentication failed.")
         return None
-    st.bottom.caption(f"Acting as `{principal.scheme.value}`")
     return principal

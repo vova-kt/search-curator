@@ -16,20 +16,24 @@ template.
 
 ## LLM roles
 
-Each LLM call site is a row under `[llm.roles.<role>]` — `dedup_judge`,
-`rank_reranker`, `feedback_summary` — and each must define its own model,
-temperature, and system prompt (every role is required), passed in per call so no
-stage carries model state. The separate `[llm].model` is the model the native
+Each LLM call site is a row under `[llm.roles.<role>]` — `domain_classifier`,
+`dedup_judge`, `rank_reranker`, `feedback_summary` — and each must define its own
+model, temperature, and system prompt (every role is required), passed in per call
+so no stage carries model state. The separate `[llm].model` is the model the native
 web-search backend runs. What each role does: [pipeline.md](pipeline.md) and
 [preferences.md](preferences.md).
 
 ## Attribute vocabulary
 
-`[search].attributes` is where a deployment declares the domain it curates: each
-sub-table is one allowed `attributes` key with a fill instruction (handed to the
-search model) and a UI emoji. Editing this set — not code — points the pipeline at
-papers, jobs, or listings instead of events. The rationale and how it narrows the
-extraction schema live in [pipeline.md](pipeline.md).
+The set of `attributes` keys a deployment can curate is **not** config: it's a
+static, typed catalog in `search/attributes.py`, grouped by domain (events, papers,
+jobs, listings, …). Each key carries a fill instruction (handed to the search model)
+and a UI emoji. Adding or retargeting a domain is a deliberate code edit to that
+catalog, not a TOML change — by design, since the keys are a closed set the rest of
+the pipeline reasons about. A saved query's domain isn't configured either: the
+`domain_classifier` role picks it from the query text on first run and caches it on
+`SavedQuery.domain`. The rationale and how the chosen domain narrows the extraction
+schema live in [pipeline.md](pipeline.md).
 
 This is unrelated to `.streamlit/config.toml`, which configures Streamlit's own
 runtime — see [deployment.md](deployment.md).

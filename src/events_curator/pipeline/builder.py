@@ -17,6 +17,7 @@ from events_curator.pipeline.orchestrator import CurationPipeline, Stages
 from events_curator.rank import PreferenceRanker
 from events_curator.search import (
     FrontierWebSearch,
+    LLMDomainClassifier,
     SearchEngine,
     WebSearchBackend,
     WebSearchTuning,
@@ -98,9 +99,6 @@ def build_search_backend(config: AppConfig) -> WebSearchBackend:
             reasoning_effort=config.search.reasoning_effort,
             allowed_domains=list(config.search.allowed_domains),
         ),
-        attribute_instructions={
-            key: spec.instruction for key, spec in config.search.attributes.items()
-        },
     )
 
 
@@ -117,10 +115,17 @@ def build_search_engine(config: AppConfig) -> SearchEngine:
 def build_default_stages(config: AppConfig) -> Stages:
     embedder = build_embedder(config)
     llm = build_llm(config)
+    classifier = config.llm.for_role(LLMRole.DOMAIN_CLASSIFIER)
     judge = config.llm.for_role(LLMRole.DEDUP_JUDGE)
     reranker = config.llm.for_role(LLMRole.RANK_RERANKER)
     summary = config.llm.for_role(LLMRole.FEEDBACK_SUMMARY)
     return Stages(
+        classifier=LLMDomainClassifier(
+            llm,
+            system_prompt=classifier.prompt,
+            model=classifier.model,
+            temperature=classifier.temperature,
+        ),
         expander=IdentityExpander(),
         search=build_search_engine(config),
         merger=RRFMerger(k=config.search.rrf_k),

@@ -29,7 +29,7 @@ from events_curator.models import (
 )
 from events_curator.pipeline.progress import ProgressEvent, ProgressListener
 from events_curator.rank import Ranker
-from events_curator.search import SearchEngine
+from events_curator.search import DomainClassifier, SearchEngine
 from events_curator.storage import Storage
 
 # One logger per stage (`events_curator.stage.<name>`) so an operator can tune the
@@ -64,6 +64,7 @@ class _Reporter:
 class Stages:
     """The pluggable stage implementations a pipeline runs with."""
 
+    classifier: DomainClassifier
     expander: Expander
     search: SearchEngine
     merger: Merger
@@ -96,8 +97,18 @@ class CurationPipeline:
         report = _Reporter(on_progress)
 
         report.start(Stage.EXPAND, "Expanding the saved query into web searches…")
+        # Derive the attribute domain once and cache it on the saved query (it shapes
+        # which `attributes` keys search requests). Re-derived only if never classified.
+        domain = query.domain
+        if domain is None:
+            domain = await self._stages.classifier.classify(query.text)
+            query.domain = domain
+            await self._storage.queries.upsert(query)
         expanded = await self._stages.expander.expand(query)
-        report.done(Stage.EXPAND, f"Expanded into {len(expanded.queries)} web search(es)")
+        report.done(
+            Stage.EXPAND,
+            f"Expanded into {len(expanded.queries)} web search(es) [domain={domain}]",
+        )
 
         # Location is a per-user attribute, not deployment config: bias the search by
         # where the requesting user is. Absent user/location means no geographic bias.
@@ -109,7 +120,10 @@ class CurationPipeline:
             Stage.SEARCH, f"Searching the web — {len(expanded.queries)} query(ies) in parallel…"
         )
         per_query = await asyncio.gather(
-            *[self._stages.search.search(q, location=location) for q in expanded.queries]
+            *[
+                self._stages.search.search(q, location=location, domain=domain)
+                for q in expanded.queries
+            ]
         )
         report.done(Stage.SEARCH, f"Search returned {len(per_query)} result list(s)")
 

@@ -79,6 +79,7 @@ class LLMRole(StrEnum):
     temperature, and system prompt under `[llm.roles.<role>]` in `config.toml`;
     every role listed here must be present there (enforced by `LLMSettings`)."""
 
+    DOMAIN_CLASSIFIER = "domain_classifier"  # picks a saved query's attribute domain
     DEDUP_JUDGE = "dedup_judge"  # tiebreak same-item judge
     RANK_RERANKER = "rank_reranker"  # preference reranker
     FEEDBACK_SUMMARY = "feedback_summary"  # NL taste-summary rewriter

@@ -66,6 +66,9 @@ class SavedQuery(BaseModel):
     text: str
     city: str | None = None
     country: str | None = None
+    # Attribute domain (a search/attributes.py catalog key), derived from `text` on
+    # first run and cached here; None until classified.
+    domain: str | None = None
     tags: list[str] = Field(default_factory=list[str])
     window: TimeWindow = Field(default_factory=TimeWindow)
     schedule_cron: str | None = None  # None = manual / on-demand only

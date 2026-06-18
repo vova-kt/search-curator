@@ -70,8 +70,8 @@ class ExtractedResult(BaseModel):
         default_factory=dict[str, str],
         description=(
             "Extra facts with no dedicated field, as a flat string→string map. The "
-            "allowed keys and how to fill each are the configured `[search].attributes` "
-            "vocabulary, injected into the submit-tool schema at call time."
+            "allowed keys and how to fill each are the active domain's vocabulary "
+            "(search/attributes.py), injected into the submit-tool schema at call time."
         ),
     )
     price: str | None = Field(
@@ -97,17 +97,21 @@ class WebSearchTuning(BaseModel):
 
 class WebSearchBackend(Protocol):
     async def find(
-        self, query: str, *, max_results: int, location: GeoBias
+        self, query: str, *, max_results: int, location: GeoBias, domain: str
     ) -> list[ExtractedResult]: ...
 
 
 class SearchEngine(Protocol):
     """One expanded query against the web, biased by the requesting user's location.
-    The orchestrator fans out across queries concurrently (rule 5)."""
+    `domain` is the saved query's attribute domain — it selects which `attributes`
+    keys the backend offers the model. The orchestrator fans out across queries
+    concurrently (rule 5)."""
 
     kind: SearchEngineKind
 
-    async def search(self, query: ExpandedQuery, *, location: GeoBias) -> list[RawSearchResult]: ...
+    async def search(
+        self, query: ExpandedQuery, *, location: GeoBias, domain: str
+    ) -> list[RawSearchResult]: ...
 
 
 class FrontierWebSearch(SearchEngine):
@@ -121,9 +125,11 @@ class FrontierWebSearch(SearchEngine):
         self._backend = backend
         self._max_results = max_results
 
-    async def search(self, query: ExpandedQuery, *, location: GeoBias) -> list[RawSearchResult]:
+    async def search(
+        self, query: ExpandedQuery, *, location: GeoBias, domain: str
+    ) -> list[RawSearchResult]:
         extracted = await self._backend.find(
-            query.text, max_results=self._max_results, location=location
+            query.text, max_results=self._max_results, location=location, domain=domain
         )
         results: list[RawSearchResult] = []
         for item in extracted:

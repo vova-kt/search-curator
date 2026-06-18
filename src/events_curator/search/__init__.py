@@ -9,6 +9,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from events_curator.search._classify import DomainClassifier, LLMDomainClassifier
+from events_curator.search.attributes import (
+    DOMAIN_ATTRIBUTES,
+    FALLBACK_DOMAIN,
+    AttributeSpec,
+    DomainSpec,
+    domain_descriptions,
+    emojis_for,
+    instructions_for,
+)
 from events_curator.search.frontier import (
     ExtractedResult,
     FrontierWebSearch,
@@ -24,14 +34,23 @@ if TYPE_CHECKING:
 
 
 __all__ = [
+    "DOMAIN_ATTRIBUTES",
+    "FALLBACK_DOMAIN",
+    "AttributeSpec",
+    "DomainClassifier",
+    "DomainSpec",
     "ExtractedResult",
     "FrontierWebSearch",
     "GeoBias",
+    "LLMDomainClassifier",
     "OpenAIWebSearch",
     "SearchEngine",
     "WebSearchBackend",
     "WebSearchTuning",
     "canonicalize_url",
+    "domain_descriptions",
+    "emojis_for",
+    "instructions_for",
 ]
 
 

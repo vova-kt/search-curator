@@ -17,7 +17,7 @@ from openai import AsyncOpenAI
 from openai.types.responses import ResponseFunctionToolCall
 
 from events_curator.enums import ReasoningEffort, SearchContextSize
-from events_curator.search import GeoBias, OpenAIWebSearch, WebSearchTuning
+from events_curator.search import GeoBias, OpenAIWebSearch, WebSearchTuning, instructions_for
 from events_curator.search._extract import SUBMIT_TOOL_NAME
 
 
@@ -36,7 +36,6 @@ def _backend(client: AsyncOpenAI, tuning: WebSearchTuning | None = None) -> Open
         instructions="find stuff",
         prompt="Find up to {max_results} results for: {query}",
         tuning=tuning or _tuning(),
-        attribute_instructions={"organizer": "who runs it"},
         client=client,
     )
 
@@ -70,7 +69,9 @@ async def test_find_offers_both_tools_and_parses_submit_call(
     client = AsyncOpenAI(api_key="test")
     monkeypatch.setattr(client.responses, "create", fake_create)
 
-    rows = await _backend(client).find("jazz in berlin", max_results=3, location=GeoBias())
+    rows = await _backend(client).find(
+        "jazz in berlin", max_results=3, location=GeoBias(), domain="events"
+    )
 
     assert [r.url for r in rows] == ["https://a.com"]
     assert captured["model"] == "gpt-4o-mini"
@@ -81,7 +82,8 @@ async def test_find_offers_both_tools_and_parses_submit_call(
     assert web_search["search_context_size"] == "high"
     submit = _submit_tool(captured["tools"])
     attributes = submit["parameters"]["$defs"]["ExtractedResult"]["properties"]["attributes"]
-    assert set(attributes["properties"]) == {"organizer"}  # the configured vocabulary
+    # The offered keys are exactly the classified domain's catalog attributes.
+    assert set(attributes["properties"]) == set(instructions_for("events"))
     assert attributes["additionalProperties"] is False
 
 
@@ -97,7 +99,7 @@ async def test_find_includes_location_and_domain_filters(monkeypatch: pytest.Mon
     tuning = _tuning(allowed_domains=["arxiv.org"])
 
     await _backend(client, tuning).find(
-        "jazz", max_results=3, location=GeoBias(city="Berlin", country="DE")
+        "jazz", max_results=3, location=GeoBias(city="Berlin", country="DE"), domain="events"
     )
 
     web_search = _web_search(captured["tools"])
@@ -121,7 +123,7 @@ async def test_find_omits_location_and_filters_when_unset(
     client = AsyncOpenAI(api_key="test")
     monkeypatch.setattr(client.responses, "create", fake_create)
 
-    await _backend(client).find("jazz", max_results=3, location=GeoBias())
+    await _backend(client).find("jazz", max_results=3, location=GeoBias(), domain="events")
 
     web_search = _web_search(captured["tools"])
     assert "filters" not in web_search
@@ -136,4 +138,9 @@ async def test_find_returns_empty_without_submit_call(monkeypatch: pytest.Monkey
     client = AsyncOpenAI(api_key="test")
     monkeypatch.setattr(client.responses, "create", fake_create)
 
-    assert await _backend(client).find("jazz in berlin", max_results=3, location=GeoBias()) == []
+    assert (
+        await _backend(client).find(
+            "jazz in berlin", max_results=3, location=GeoBias(), domain="events"
+        )
+        == []
+    )

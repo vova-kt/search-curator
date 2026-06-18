@@ -13,6 +13,11 @@ provider = "openai"
 api_key = ""
 model = "gpt-4o-mini"
 
+[llm.roles.domain_classifier]
+model = "gpt-4o-mini"
+temperature = 0.0
+prompt = """You classify a recurring web search into the single domain that best fits it. You are given the search query and a list of domains, each with a short description. Pick the one best-fitting domain and report it by calling the submit_domain tool with exactly one of the offered domain names."""
+
 [llm.roles.dedup_judge]
 model = "gpt-4o-mini"
 temperature = 0.0
@@ -54,24 +59,6 @@ instructions = """You are a web research assistant. Use web search to find curre
 prompt = """Find up to {max_results} results for: {query}
 
 Fill every field of each result that the source supports. For facts with no dedicated field, fill only the keys offered by the `attributes` object of the `submit_results` tool, each following its instruction; omit anything you cannot find."""
-
-# `attributes` is the open-ended escape hatch for facts with no dedicated field, but the
-# allowed keys are a closed, configured vocabulary so the model stops inventing its own.
-# Each `[search.attributes.<key>]` carries an `instruction` (offered to the search model
-# as that key's fill guidance) and an `emoji` (shown beside the value in the UI). Use
-# lowercase snake_case keys. Swap this whole set to curate papers/jobs/listings instead
-# of events — it's domain config, not code.
-[search.attributes.organizer]
-instruction = "Who runs or hosts the event"
-emoji = "🏛️"
-
-[search.attributes.genre]
-instruction = "Music genre or event category"
-emoji = "🎵"
-
-[search.attributes.lineup]
-instruction = "Headline acts or speakers, comma-separated"
-emoji = "🎤"
 
 # --- Dedup thresholds ---
 [dedup]

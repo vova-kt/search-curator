@@ -42,10 +42,10 @@ def build_search_prompt(template: str, query: str, *, max_results: int) -> str:
 def submit_tool(attribute_instructions: Mapping[str, str]) -> dict[str, object]:
     """The `submit_results` function-tool spec for the Responses API. Its parameters
     schema is generated from `ExtractedResults` (so the row shape stays single-sourced
-    in the model), then the open `attributes` map is narrowed to the configured
-    `[search].attributes` vocabulary: one string property per allowed key, described
-    by its fill instruction, with extra keys forbidden so the model stops inventing
-    its own."""
+    in the model), then the open `attributes` map is narrowed to the active domain's
+    vocabulary (`search/attributes.py`, selected per query): one string property per
+    allowed key, described by its fill instruction, with extra keys forbidden so the
+    model stops inventing its own."""
     schema = cast("dict[str, object]", ExtractedResults.model_json_schema())
     _install_attribute_vocabulary(schema, attribute_instructions)
     return {
@@ -61,8 +61,8 @@ def _install_attribute_vocabulary(
     schema: dict[str, object], attribute_instructions: Mapping[str, str]
 ) -> None:
     """Replace the generated open `attributes` object (any string→string map) with a
-    closed object whose only properties are the configured keys. `ExtractedResult` is
-    referenced via `$defs`, so its `attributes` property lives in one of those defs."""
+    closed object whose only properties are the active domain's keys. `ExtractedResult`
+    is referenced via `$defs`, so its `attributes` property lives in one of those defs."""
     vocabulary: dict[str, object] = {
         "type": "object",
         "description": _ATTRIBUTES_DESCRIPTION,
