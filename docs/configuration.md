@@ -17,11 +17,11 @@ template.
 ## LLM roles
 
 Each LLM call site is a row under `[llm.roles.<role>]` — `domain_classifier`,
-`dedup_judge`, `rank_reranker`, `feedback_summary` — and each must define its own
-model, temperature, and system prompt (every role is required), passed in per call
-so no stage carries model state. The separate `[llm].model` is the model the native
-web-search backend runs. What each role does: [pipeline.md](pipeline.md) and
-[preferences.md](preferences.md).
+`query_expander`, `dedup_judge`, `rank_reranker`, `feedback_summary` — and each must
+define its own model, temperature, and system prompt (every role is required), passed
+in per call so no stage carries model state. The separate `[llm].model` is the model
+the native web-search backend runs. What each role does: [pipeline.md](pipeline.md)
+and [preferences.md](preferences.md).
 
 ## Attribute vocabulary
 

@@ -9,7 +9,7 @@ from events_curator.config import AppConfig, get_config
 from events_curator.dedup import ThresholdDeduper
 from events_curator.embed import Embedder
 from events_curator.enums import AuthScheme, EmbedderKind, LLMProvider, LLMRole, SearchEngineKind
-from events_curator.expand import IdentityExpander
+from events_curator.expand import LLMQueryExpander
 from events_curator.feedback import ProfileUpdater
 from events_curator.llm import LLMClient
 from events_curator.merge import RRFMerger
@@ -116,6 +116,7 @@ def build_default_stages(config: AppConfig) -> Stages:
     embedder = build_embedder(config)
     llm = build_llm(config)
     classifier = config.llm.for_role(LLMRole.DOMAIN_CLASSIFIER)
+    expander = config.llm.for_role(LLMRole.QUERY_EXPANDER)
     judge = config.llm.for_role(LLMRole.DEDUP_JUDGE)
     reranker = config.llm.for_role(LLMRole.RANK_RERANKER)
     summary = config.llm.for_role(LLMRole.FEEDBACK_SUMMARY)
@@ -126,7 +127,12 @@ def build_default_stages(config: AppConfig) -> Stages:
             model=classifier.model,
             temperature=classifier.temperature,
         ),
-        expander=IdentityExpander(),
+        expander=LLMQueryExpander(
+            llm,
+            system_prompt=expander.prompt,
+            model=expander.model,
+            temperature=expander.temperature,
+        ),
         search=build_search_engine(config),
         merger=RRFMerger(k=config.search.rrf_k),
         deduper=ThresholdDeduper(

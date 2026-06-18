@@ -57,14 +57,9 @@ def test_toml_loads_nested_groups_and_enum_keyed_roles() -> None:
 
 
 def test_for_role_returns_that_call_sites_settings() -> None:
-    settings = _llm_settings(
-        roles={
-            LLMRole.DOMAIN_CLASSIFIER: LLMRoleSettings(model="d", temperature=0.0, prompt="dp"),
-            LLMRole.DEDUP_JUDGE: LLMRoleSettings(model="j", temperature=0.1, prompt="jp"),
-            LLMRole.RANK_RERANKER: LLMRoleSettings(model="r", temperature=0.7, prompt="rp"),
-            LLMRole.FEEDBACK_SUMMARY: LLMRoleSettings(model="s", temperature=0.0, prompt="sp"),
-        }
-    )
+    roles = _roles()
+    roles[LLMRole.RANK_RERANKER] = LLMRoleSettings(model="r", temperature=0.7, prompt="rp")
+    settings = _llm_settings(roles=roles)
     resolved = settings.for_role(LLMRole.RANK_RERANKER)
     assert (resolved.model, resolved.temperature, resolved.prompt) == ("r", 0.7, "rp")
 

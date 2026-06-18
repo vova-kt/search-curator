@@ -80,6 +80,7 @@ class LLMRole(StrEnum):
     every role listed here must be present there (enforced by `LLMSettings`)."""
 
     DOMAIN_CLASSIFIER = "domain_classifier"  # picks a saved query's attribute domain
+    QUERY_EXPANDER = "query_expander"  # translates a saved query into per-language searches
     DEDUP_JUDGE = "dedup_judge"  # tiebreak same-item judge
     RANK_RERANKER = "rank_reranker"  # preference reranker
     FEEDBACK_SUMMARY = "feedback_summary"  # NL taste-summary rewriter

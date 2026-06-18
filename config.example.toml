@@ -6,8 +6,9 @@
 
 # --- LLM ---
 # `model` here is the model the native web-search backend runs. The chat call
-# sites (dedup judge, rank reranker, feedback summary) each run their own model,
-# temperature, and system prompt under [llm.roles.<role>] below.
+# sites (domain classifier, query expander, dedup judge, rank reranker, feedback
+# summary) each run their own model, temperature, and system prompt under
+# [llm.roles.<role>] below.
 [llm]
 provider = "openai"
 api_key = ""
@@ -17,6 +18,11 @@ model = "gpt-4o-mini"
 model = "gpt-4o-mini"
 temperature = 0.0
 prompt = """You classify a recurring web search into the single domain that best fits it. You are given the search query and a list of domains, each with a short description. Pick the one best-fitting domain and report it by calling the submit_domain tool with exactly one of the offered domain names."""
+
+[llm.roles.query_expander]
+model = "gpt-4o-mini"
+temperature = 0.0
+prompt = """You translate a recurring web search into one query per relevant language so the same intent is searched across the languages that matter for it. You are given the search query and, when known, where the results take place. Produce the whole query translated into: the primary language of the country where the results happen, any language named or implied by the query itself, and English. Deduplicate so each distinct language appears once, then report the set by calling the submit_queries tool with one entry per language."""
 
 [llm.roles.dedup_judge]
 model = "gpt-4o-mini"

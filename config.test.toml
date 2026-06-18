@@ -13,6 +13,11 @@ model = "test-model"
 temperature = 0.0
 prompt = "test domain classifier prompt"
 
+[llm.roles.query_expander]
+model = "test-model"
+temperature = 0.0
+prompt = "test query expander prompt"
+
 [llm.roles.dedup_judge]
 model = "test-model"
 temperature = 0.0

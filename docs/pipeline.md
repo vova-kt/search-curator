@@ -11,10 +11,17 @@ run is in [observability.md](observability.md).
 
 Turn one saved query into the concrete web queries to run. The variant that makes
 ChatGPT/Claude-style search feel good is **multi-query fan-out**: one LLM call
-explodes the intent into complementary sub-queries (synonyms, neighbourhoods, date
-phrasings), searched in parallel and fused. Today `IdentityExpander` returns the
-user's text unchanged — enough to exercise the pipeline; the LLM fan-out replaces
-it.
+explodes the intent into complementary sub-queries, searched in parallel and fused.
+The shipped fan-out is **by translation** (`LLMQueryExpander`): one `submit_queries`
+call returns the query rendered in the language of the country where the results
+happen, any language named or implied by the query itself, and English (deduplicated,
+so "русский стендап в париже" becomes Russian + French + English). Why translation
+specifically: a recurring search for events/listings is answered best in the local
+tongue, but the requester often phrases it in their own — searching both surfaces
+sources neither phrasing alone would. Like the other LLM call sites it uses the
+submit-tool pattern (the `query_expander` role), and falls back to the original text
+when the model returns nothing usable. `IdentityExpander` is the no-LLM stub that
+returns the user's text unchanged — handy for tests and offline runs.
 
 Alongside expansion, the orchestrator resolves the query's **attribute domain** —
 which catalog entry (events, papers, jobs, …) governs the `attributes` keys search

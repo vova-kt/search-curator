@@ -75,7 +75,8 @@ class ExtractedResult(BaseModel):
         ),
     )
     price: str | None = Field(
-        default=None, description="Price as shown (e.g. '15€', 'free'), or null if unknown."
+        default=None,
+        description="Price as shown (e.g. '15€', 'free'), or null if unknown. (keep it short)",
     )
 
 
