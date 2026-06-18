@@ -12,13 +12,16 @@ the stack in Docker. Two thin processes share one SQLite file.
   point is `apps/server.py` (`events-curator` script). Both processes pick their
   store with `build_storage` (`pipeline/builder.py`), so they share one SQLite
   file unless `STORAGE__DB_PATH` is the `:memory:` sentinel.
-- **ui** — the Streamlit app (`apps/streamlit_app.py`), two tabs: a **read-only**
+- **ui** — the Streamlit app (`apps/streamlit_app/app.py`). A left-hand menu
+  (`st.navigation`) switches between three sections: *Query results* (run a saved
+  query, give feedback), *New query* (the create form), and a **read-only**
   *Database* window (opens SQLite `mode=ro`, never writes) for inspecting what the
-  server wrote, and a *Run & feedback* console. The console is **local-only** — it
-  loads only under `AUTH__SCHEME=local` — but it still mints a `Principal` through
-  the `auth` module so the pipeline's ownership checks run unchanged. Through it an
-  operator creates/saves queries, runs them, and records like/dislike feedback; a
-  live run needs the `llm`/`embed` adapters wired, otherwise it surfaces the
+  server wrote. The two writable sections are **local-only** — they load only under
+  `AUTH__SCHEME=local` — but still mint a `Principal` through the `auth` module so
+  the pipeline's ownership checks run unchanged. Through them an operator
+  creates/saves queries, runs them, and records like/dislike feedback (Like/Dislike
+  open a modal that takes an optional free-text comment); a live run
+  needs the `llm`/`embed` adapters wired, otherwise it surfaces the
   unconfigured-stage message rather than failing silently.
 
 They share a Docker volume so the view sees the server's writes. Both read
@@ -26,8 +29,10 @@ They share a Docker volume so the view sees the server's writes. Both read
 
 ## Streamlit config
 
-`.streamlit/config.toml` holds the console's Streamlit runtime settings. The
-load-bearing one is `server.fileWatcherType = "none"`: Streamlit's hot-reload
+`.streamlit/config.toml` holds the console's Streamlit runtime settings. Its
+`[theme]` block tunes the console for density — a smaller `baseFontSize` scales
+the whole UI down, with tighter radius and headings (values live in the file).
+The load-bearing one is `server.fileWatcherType = "none"`: Streamlit's hot-reload
 watcher introspects every imported module, and once the `embed` extra loads
 `transformers` that probe trips an optional `torchvision`-dependent submodule,
 spraying a harmless traceback on every rerun. The console is a deployed view, not

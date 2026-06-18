@@ -20,7 +20,7 @@ services:
       - run
       - streamlit
       - run
-      - src/events_curator/apps/streamlit_app.py
+      - src/events_curator/apps/streamlit_app/app.py
       - --server.port=8501
       - --server.address=0.0.0.0
     env_file:

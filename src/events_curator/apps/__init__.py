@@ -1,5 +1,5 @@
-"""Apps module door: the UIs that drive the pipeline. The Streamlit DB view is a
-standalone script (`streamlit run .../streamlit_app.py`), not exported here."""
+"""Apps module door: the UIs that drive the pipeline. The Streamlit console is a
+standalone script (`streamlit run .../streamlit_app/app.py`), not exported here."""
 
 from __future__ import annotations
 

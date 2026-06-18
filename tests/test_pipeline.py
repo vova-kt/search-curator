@@ -14,6 +14,7 @@ from events_curator.enums import (
     AuthScheme,
     DedupDecision,
     FeedbackKind,
+    ProgressPhase,
     SearchEngineKind,
     Stage,
 )
@@ -34,7 +35,12 @@ from events_curator.models import (
     new_canonical_search_result_id,
     new_saved_query_id,
 )
-from events_curator.pipeline import CurationPipeline, Stages, UnknownSavedQueryError
+from events_curator.pipeline import (
+    CurationPipeline,
+    ProgressEvent,
+    Stages,
+    UnknownSavedQueryError,
+)
 from events_curator.storage import (
     FeedbackStore,
     InMemoryStorage,
@@ -181,6 +187,35 @@ async def test_run_logs_each_stage(caplog: pytest.LogCaptureFixture) -> None:
     levels = {record.levelno for record in caplog.records}
     assert logging.INFO in levels
     assert logging.DEBUG in levels
+
+
+class _RecordingProgress:
+    def __init__(self) -> None:
+        self.events: list[ProgressEvent] = []
+
+    def on_progress(self, event: ProgressEvent) -> None:
+        self.events.append(event)
+
+
+async def test_run_reports_progress_for_every_stage() -> None:
+    pipeline, query, _ = await _pipeline_with_query(UserId("u1"))
+    listener = _RecordingProgress()
+    await pipeline.run(query.id, _principal(UserId("u1")), on_progress=listener)
+
+    # Every stage surfaces in the stream, and each event carries a ready-to-show line.
+    assert {e.stage for e in listener.events} == set(Stage)
+    assert all(e.detail for e in listener.events)
+    # Slow stages announce a START before the await; every reported step ends in DONE.
+    assert {e.phase for e in listener.events} == {ProgressPhase.START, ProgressPhase.DONE}
+    assert listener.events[-1] == ProgressEvent(
+        stage=Stage.RANK, phase=ProgressPhase.DONE, detail=listener.events[-1].detail
+    )
+
+
+async def test_run_without_listener_still_runs() -> None:
+    pipeline, query, _ = await _pipeline_with_query(UserId("u1"))
+    ranked = await pipeline.run(query.id, _principal(UserId("u1")))
+    assert len(ranked) == 2
 
 
 async def test_record_feedback_updates_profile() -> None:

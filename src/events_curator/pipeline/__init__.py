@@ -18,10 +18,13 @@ from events_curator.pipeline.orchestrator import (
     Stages,
     UnknownSavedQueryError,
 )
+from events_curator.pipeline.progress import ProgressEvent, ProgressListener
 
 __all__ = [
     "IN_MEMORY_DB_PATH",
     "CurationPipeline",
+    "ProgressEvent",
+    "ProgressListener",
     "Stages",
     "UnknownSavedQueryError",
     "build_authenticator",

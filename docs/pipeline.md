@@ -8,6 +8,28 @@ The orchestrator logs each stage under a per-stage logger
 (`events_curator.stage.<name>`), milestones at `INFO` and detail at `DEBUG`, so
 verbosity is tunable one stage at a time — see [deployment.md](deployment.md#logging).
 
+## Observability — the progress stream
+
+Logs answer *what happened* after the fact; a person watching a live run needs to
+know *what it's waiting on right now*. A run can be slow (web search reads full
+pages, dedup and rank may call an LLM), so `run()` takes an optional
+`ProgressListener` (`pipeline/progress.py`) and notifies it as each stage advances.
+The same milestones the per-stage loggers record are fanned out to the listener, so
+the trace an operator sees and the trace the logs keep never drift apart — they're
+emitted from one place (`_Reporter` in the orchestrator).
+
+Each `ProgressEvent` carries the `Stage`, a `ProgressPhase`, and a ready-to-show
+`detail` line. A `START` is emitted *before* a slow await so the UI can say
+"Searching the web…" while it blocks; a `DONE` reports the result ("Fused into 12
+candidates"). The listener is called synchronously on the run's own task in stage
+order, so an implementation must stay cheap and non-blocking — no network, no
+`await`. A run with no listener (scheduler, eval) skips emission entirely; the
+listener is purely additive and never changes what a run computes.
+
+The Streamlit console is the reference consumer: it wraps a run in an `st.status`
+panel whose label tracks the running stage and whose body logs each event, so the
+operator sees the pipeline move instead of a bare spinner.
+
 ## expand — `expand/`
 
 Turn one saved query into the concrete web queries to run. The variant that makes

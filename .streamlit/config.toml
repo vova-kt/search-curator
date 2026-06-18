@@ -1,6 +1,6 @@
 # Streamlit configuration for the events-curator operator console.
 # Streamlit reads this file when the app is launched from the project root
-# (`streamlit run src/events_curator/apps/streamlit_app.py`). The docker-compose
+# (`streamlit run src/events_curator/apps/streamlit_app/app.py`). The docker-compose
 # `ui` service additionally passes --server.port / --server.address on the CLI,
 # which override the matching [server] values below.
 #
@@ -29,6 +29,15 @@ port = 8501
 [browser]
 # A private single-operator tool — don't send usage telemetry.
 gatherUsageStats = false
+
+[theme]
+# Denser operator console. baseFontSize scales *both* text and UI element sizing,
+# so a smaller root shrinks the whole app uniformly; baseRadius tightens corners.
+# headingFontSizes is rem-relative to baseFontSize (subheaders render as h3). Tune
+# baseFontSize down further for an even tighter view.
+baseFontSize = 14
+baseRadius = "small"
+headingFontSizes = ["1.5rem", "1.3rem", "1.15rem", "1.05rem", "0.95rem", "0.9rem"]
 
 [logger]
 # Streamlit's *internal* log level (its server, file-watcher, and script-runner

@@ -19,6 +19,14 @@ class Stage(StrEnum):
     RANK = "rank"
 
 
+class ProgressPhase(StrEnum):
+    """Where a stage is in its work, for the observable progress stream: a `START`
+    announces slow work about to begin, a `DONE` reports its result."""
+
+    START = "start"
+    DONE = "done"
+
+
 class FeedbackKind(StrEnum):
     LIKE = "like"
     DISLIKE = "dislike"
@@ -80,3 +88,6 @@ class NoisyLogger(StrEnum):
 
     HTTPX = "httpx"
     ASYNCIO = "asyncio"
+    FSEVENTS = "fsevents"
+    HTTPCORE_CONNECTION = "httpcore.connection"
+    HTTPCORE_HTTP11 = "httpcore.http11"

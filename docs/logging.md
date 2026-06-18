@@ -8,7 +8,7 @@ but they're reached differently, and that split is the thing worth understanding
 ## Why two entry points
 
 **Deployed apps configure logging explicitly.** Each entrypoint (`apps/server.py`,
-`apps/streamlit_app.py`) calls `setup_logging` (`config.py`) once at startup. It is
+`apps/streamlit_app/app.py`) calls `setup_logging` (`config.py`) once at startup. It is
 env-driven (`LOGGING__*`, defaults in `config.py`): the scheduler honours the
 configured level (default `INFO`), while the Streamlit console forces `DEBUG`
 regardless — an operator poking at a single run wants the full trace. `setup_logging`

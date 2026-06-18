@@ -31,7 +31,8 @@ authenticator yet, so the factory raises a pointer to wire one. Adding a scheme
 means implementing the `Authenticator` protocol and adding its case to the
 factory; ownership enforcement downstream is unchanged.
 
-The Streamlit *Run & feedback* console (see [deployment.md](deployment.md)) is
-gated to `LOCAL` — it's a single-operator tool — but it deliberately still
-authenticates through this module to get its `Principal`, so the pipeline's
-`ensure_owner` check runs the same way it does for every other caller.
+The Streamlit console's writable sections (*Query results* and *New query*, see
+[deployment.md](deployment.md)) are gated to `LOCAL` — it's a single-operator
+tool — but they deliberately still authenticate through this module to get a
+`Principal`, so the pipeline's `ensure_owner` check runs the same way it does for
+every other caller.
