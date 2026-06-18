@@ -97,21 +97,38 @@ past sessions — the same real-world item resurfaces with different URLs, title
 wording each run. The design is classic **entity resolution**: canonicalize the
 URL, *block* on date(±N days)+city to avoid comparing everything to everything, then
 score similarity (MinHash on text + embedding cosine). Above `auto_merge_threshold`
-→ merge; in the tiebreak band → ask an LLM judge; below → insert as new. Concept:
+→ merge; in the tiebreak band → ask an LLM judge; below → insert as new. A
+venue+start-time match also routes to the judge regardless of text score. Concept:
 [concepts/entity-resolution.md](concepts/entity-resolution.md).
 
 Choices worth their *why*:
 
-- **The two signals fuse by the stronger of them** (`max`, `dedup/_match.py`):
+- **Two text signals fuse by the stronger of them** (`max`, `dedup/_match.py`):
   strong wording overlap *or* strong semantic closeness flags a likely duplicate.
-  That favours recall; the tiebreak-band judge guards against a
-  high-lexical-but-unrelated pair auto-merging. A wrong merge corrupts the golden
-  record, so the judge is parsed conservatively — anything but a clear "yes" inserts
-  new (a missed merge is recovered next run).
-- **Within-run dedup rides the same path as cross-session.** Each new/updated
-  canonical is upserted as it's decided, so a later candidate's `nearest` already
-  sees it — no separate intra-batch pass. An exact-URL index short-circuits two
-  candidates sharing one canonical URL.
+  This favours recall; the tiebreak-band judge guards against a high-lexical-but-
+  unrelated pair auto-merging.
+- **Venue+start-time is a third, structured signal that *routes to the judge*, not
+  to auto-merge.** It exists because the text signals share a blind spot — one
+  real-world show listed on two ticket sites in two languages (a Russian and an
+  English blurb) barely overlaps lexically and only moderately by embedding, so both
+  land below the merge band even though same-venue-same-time is strong identity
+  evidence. But it is evidence, not proof: a multi-room venue or a source that
+  defaults missing times to a fixed slot can put two *different* shows at one
+  venue+time, so auto-merging on it would corrupt the golden record. The judge
+  arbitrates. A missed merge is recovered next run; a wrong one is not.
+- **The judge is batched** (`dedup/_judge.py`): every pair held back in a run —
+  tiebreak-band *and* venue+time — is decided in a single `submit_verdicts`
+  function-tool call that returns one typed boolean per numbered pair, so
+  reconciliation spends one LLM round-trip per run, not one per pair. The reply is
+  parsed conservatively: a malformed payload or an omitted pair reads as distinct
+  (a missed merge is cheap, a wrong one corrupts the record).
+- **Within-run dedup rides the same path as cross-session,** with one wrinkle for
+  the judge. A sequential triage pass settles the unambiguous candidates inline and
+  upserts each as it's decided, so a later candidate's `nearest` already sees it.
+  Ambiguous candidates (judge-band) are instead *held back* until one batched judge
+  call resolves them all, so a later candidate cannot match a not-yet-judged one —
+  acceptable because it still matches the same corpus target. An exact-URL index
+  short-circuits two candidates sharing one canonical URL.
 - **Survivorship is first-non-empty-wins** (plus a key-wise `attributes` merge): the
   canonical keeps a field once any source fills it, later sightings only fill gaps,
   and provenance records the raw source that won each field. No per-source trust

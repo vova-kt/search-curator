@@ -1,19 +1,28 @@
 """ThresholdDeduper reconciles candidates against the stored corpus: exact-URL and
-high-similarity matches merge into a golden record, the ambiguous band defers to an
-LLM judge, and everything else is inserted new."""
+high-similarity matches merge into a golden record, the ambiguous band (tiebreak
+similarity *or* a venue+start-time match) is held back for one batched LLM judge
+call, and everything else is inserted new."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from events_curator.dedup import ThresholdDeduper
 from events_curator.dedup._golden import doc_text, merge_into, new_golden
-from events_curator.dedup._judge import build_judge_prompt, parse_judge_verdict
+from events_curator.dedup._judge import (
+    SUBMIT_TOOL_NAME,
+    DuplicateVerdicts,
+    PairVerdict,
+    build_judge_prompt,
+    parse_verdicts,
+)
 from events_curator.dedup._match import (
     combined_similarity,
     jaccard,
     text_signature,
+    venue_time_match,
 )
 from events_curator.enums import DedupDecision, SearchEngineKind
 from events_curator.llm import ChatMessage
@@ -37,16 +46,19 @@ class FakeEmbedder:
 
 
 class FakeJudge:
-    def __init__(self, verdict: str) -> None:
+    """Stands in for the batched LLM tiebreak judge: it answers every numbered pair
+    in the prompt with the same verdict via the submit-tool, and records each call's
+    messages so tests can assert the judge ran exactly once (or not at all)."""
+
+    def __init__(self, verdict: bool) -> None:
         self._verdict = verdict
         self.calls: list[Sequence[ChatMessage]] = []
 
     async def complete(
         self, messages: Sequence[ChatMessage], *, model: str, temperature: float = 0.0
     ) -> str:
-        del model, temperature
-        self.calls.append(messages)
-        return self._verdict
+        del messages, model, temperature
+        raise NotImplementedError  # the judge answers via submit only
 
     async def submit(
         self,
@@ -56,8 +68,12 @@ class FakeJudge:
         model: str,
         temperature: float = 0.0,
     ) -> str:
-        del messages, tool, model, temperature
-        raise NotImplementedError  # the judge answers via complete only
+        del tool, model, temperature
+        self.calls.append(messages)
+        pairs = [int(n) for n in re.findall(r"Pair (\d+):", messages[1].content)]
+        return DuplicateVerdicts(
+            verdicts=[PairVerdict(pair=n, same=self._verdict) for n in pairs]
+        ).model_dump_json()
 
 
 def _cand(
@@ -65,6 +81,7 @@ def _cand(
     *,
     url: str | None = None,
     city: str | None = "Berlin",
+    venue: str | None = None,
     description: str = "",
     attributes: dict[str, str] | None = None,
     starts_at: datetime | None = DATE,
@@ -75,7 +92,7 @@ def _cand(
         title=title,
         description=description,
         starts_at=starts_at,
-        geo=Geo(city=city),
+        geo=Geo(city=city, venue=venue),
         attributes=attributes or {},
     )
 
@@ -83,7 +100,7 @@ def _cand(
 def _deduper(embedder: FakeEmbedder, judge: FakeJudge | None = None) -> ThresholdDeduper:
     return ThresholdDeduper(
         embedder,
-        judge or FakeJudge("no"),
+        judge or FakeJudge(False),
         system_prompt="judge",
         model="test-model",
         auto_merge_threshold=0.88,
@@ -167,10 +184,62 @@ async def test_auto_merge_by_cosine() -> None:
     assert outcomes[0].canonical_search_result_id == outcomes[1].canonical_search_result_id
 
 
+async def test_venue_and_time_routes_to_judge_then_merges() -> None:
+    # Same show on two ticket sites in different languages: titles/descriptions
+    # diverge so cosine and lexical both stay low. The shared venue + start time is
+    # strong evidence but not proof (a multi-room venue or a default-time source can
+    # collide unrelated shows), so the pair is routed to the judge — which here
+    # confirms the duplicate and merges it.
+    store = _store()
+    embedder = FakeEmbedder({"Stand-up Berlin": [1.0, 0.0], "Стендап Берлин": [0.0, 1.0]})
+    judge = FakeJudge(True)
+    first = _cand("Stand-up Berlin", url="https://a.com/1", venue="Prachtwerk")
+    second = _cand("Стендап Берлин", url="https://b.com/2", venue="prachtwerk")
+    outcomes = await _deduper(embedder, judge).reconcile([first, second], store)
+
+    assert outcomes[1].decision is DedupDecision.TIEBREAK
+    assert outcomes[0].canonical_search_result_id == outcomes[1].canonical_search_result_id
+    assert len(judge.calls) == 1
+
+
+async def test_same_venue_different_time_does_not_merge() -> None:
+    # Matinee and evening show at one venue are distinct: weak text + no venue+time
+    # identity keeps them apart.
+    store = _store()
+    evening = datetime(2026, 7, 1, 22, tzinfo=UTC)
+    embedder = FakeEmbedder({"Matinee": [1.0, 0.0], "Evening": [0.0, 1.0]})
+    first = _cand("Matinee", url="https://a.com/1", venue="Prachtwerk")
+    second = _cand("Evening", url="https://b.com/2", venue="Prachtwerk", starts_at=evening)
+    outcomes = await _deduper(embedder).reconcile([first, second], store)
+
+    assert outcomes[1].decision is DedupDecision.INSERT_NEW
+    assert outcomes[0].canonical_search_result_id != outcomes[1].canonical_search_result_id
+
+
+async def test_different_acts_same_venue_and_time_routed_to_judge_stay_separate() -> None:
+    # Two genuinely different shows that collide on venue + start time — e.g. a
+    # ticket source that defaults missing times to "20:00", so unrelated events at
+    # one popular venue share an identical slot. The performers, titles and blurbs
+    # are unrelated (orthogonal embeddings, no lexical overlap). venue+time alone is
+    # *not* a certain identity, so the pair is routed to the judge — which here rules
+    # them distinct and keeps them apart. This is the precision guard the structured
+    # signal would trip without the judge.
+    store = _store()
+    embedder = FakeEmbedder({"Ivan Ivanov Live": [1.0, 0.0], "Pyotr Petrov Live": [0.0, 1.0]})
+    judge = FakeJudge(False)
+    first = _cand("Ivan Ivanov Live", url="https://a.com/1", venue="Babylon Mitte")
+    second = _cand("Pyotr Petrov Live", url="https://b.com/2", venue="Babylon Mitte")
+    outcomes = await _deduper(embedder, judge).reconcile([first, second], store)
+
+    assert outcomes[1].decision is DedupDecision.TIEBREAK
+    assert outcomes[0].canonical_search_result_id != outcomes[1].canonical_search_result_id
+    assert len(judge.calls) == 1
+
+
 async def test_tiebreak_band_judge_merges() -> None:
     store = _store()
     embedder = FakeEmbedder({"Morning Trail Race": [1.0, 0.0], "Sunrise Mountain Run": [0.8, 0.6]})
-    judge = FakeJudge("yes")
+    judge = FakeJudge(True)
     first = _cand("Morning Trail Race", url="https://e.com/1")
     second = _cand("Sunrise Mountain Run", url="https://e.com/2")
     outcomes = await _deduper(embedder, judge).reconcile([first, second], store)
@@ -183,7 +252,7 @@ async def test_tiebreak_band_judge_merges() -> None:
 async def test_tiebreak_band_judge_rejects() -> None:
     store = _store()
     embedder = FakeEmbedder({"Morning Trail Race": [1.0, 0.0], "Sunrise Mountain Run": [0.8, 0.6]})
-    judge = FakeJudge("no")
+    judge = FakeJudge(False)
     first = _cand("Morning Trail Race", url="https://e.com/1")
     second = _cand("Sunrise Mountain Run", url="https://e.com/2")
     outcomes = await _deduper(embedder, judge).reconcile([first, second], store)
@@ -196,7 +265,7 @@ async def test_tiebreak_band_judge_rejects() -> None:
 async def test_below_threshold_inserts_new_with_match_similarity() -> None:
     store = _store()
     embedder = FakeEmbedder({"Opera Gala": [1.0, 0.0], "Punk Basement": [0.0, 1.0]})
-    judge = FakeJudge("yes")  # would merge if reached; it must not be
+    judge = FakeJudge(True)  # would merge if reached; it must not be
     first = _cand("Opera Gala", url="https://e.com/1")
     second = _cand("Punk Basement", url="https://e.com/2")
     outcomes = await _deduper(embedder, judge).reconcile([first, second], store)
@@ -241,27 +310,70 @@ def test_combined_similarity_takes_the_stronger_signal() -> None:
     assert combined_similarity(0.9, 0.1) == 0.9
 
 
+def test_venue_time_match_same_venue_and_start_is_true() -> None:
+    # case/whitespace-insensitive venue, identical start -> identity evidence
+    assert venue_time_match("Prachtwerk", DATE, "  prachtwerk ", DATE) is True
+
+
+def test_venue_time_match_differing_venue_or_time_is_false() -> None:
+    other = datetime(2026, 7, 2, 20, tzinfo=UTC)
+    assert venue_time_match("Prachtwerk", DATE, "Babylon Mitte", DATE) is False
+    assert venue_time_match("Prachtwerk", DATE, "Prachtwerk", other) is False
+
+
+def test_venue_time_match_missing_venue_or_start_is_false() -> None:
+    # a blank venue or missing start can't anchor identity -> never matches
+    assert venue_time_match(None, DATE, None, DATE) is False
+    assert venue_time_match("", DATE, "  ", DATE) is False
+    assert venue_time_match("Prachtwerk", None, "Prachtwerk", None) is False
+
+
 # --- _judge ----------------------------------------------------------------
 
 
-def test_parse_judge_verdict() -> None:
-    assert parse_judge_verdict("yes") is True
-    assert parse_judge_verdict("  YES, same event\n") is True
-    assert parse_judge_verdict("same") is True
-    assert parse_judge_verdict("no") is False
-    assert parse_judge_verdict("") is False
-    assert parse_judge_verdict("they differ") is False
+def test_parse_verdicts_reads_per_pair_booleans() -> None:
+    payload = DuplicateVerdicts(
+        verdicts=[PairVerdict(pair=1, same=True), PairVerdict(pair=2, same=False)]
+    ).model_dump_json()
+    assert parse_verdicts(payload, count=2) == {0: True, 1: False}
 
 
-def test_build_judge_prompt_carries_both_records() -> None:
-    candidate = _cand("Trail Race", description="10k")
-    canonical, _ = new_golden(_cand("Mountain Run"), [1.0, 0.0])
-    messages = build_judge_prompt("be a judge", candidate, canonical)
+def test_parse_verdicts_malformed_treats_all_as_distinct() -> None:
+    assert parse_verdicts("not json", count=3) == {}
+
+
+def test_parse_verdicts_drops_out_of_range_and_duplicate_pairs() -> None:
+    payload = DuplicateVerdicts(
+        verdicts=[
+            PairVerdict(pair=1, same=True),
+            PairVerdict(pair=1, same=False),  # duplicate pair number -> dropped
+            PairVerdict(pair=9, same=True),  # out of range -> dropped
+        ]
+    ).model_dump_json()
+    assert parse_verdicts(payload, count=2) == {0: True}
+
+
+def test_parse_verdicts_omitted_pair_is_absent() -> None:
+    # a pair the model never returns is absent from the map (caller reads as distinct)
+    payload = DuplicateVerdicts(verdicts=[PairVerdict(pair=2, same=True)]).model_dump_json()
+    assert parse_verdicts(payload, count=3) == {1: True}
+
+
+def test_build_judge_prompt_numbers_every_pair() -> None:
+    cand_a = _cand("Trail Race", description="10k")
+    canonical_a, _ = new_golden(_cand("Mountain Run"), [1.0, 0.0])
+    cand_b = _cand("Salsa Class")
+    canonical_b, _ = new_golden(_cand("Salsa Night"), [0.0, 1.0])
+    messages = build_judge_prompt("be a judge", [(cand_a, canonical_a), (cand_b, canonical_b)])
 
     assert [m.role for m in messages] == ["system", "user"]
     assert messages[0].content == "be a judge"
-    assert "Trail Race" in messages[1].content
-    assert "Mountain Run" in messages[1].content
+    body = messages[1].content
+    assert "Pair 1:" in body
+    assert "Pair 2:" in body
+    assert "Trail Race" in body
+    assert "Mountain Run" in body
+    assert SUBMIT_TOOL_NAME in body
 
 
 # --- _golden ---------------------------------------------------------------

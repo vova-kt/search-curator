@@ -11,6 +11,7 @@ comparison a fixed-width signature so the same code holds up if the corpus grows
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 
 _SHINGLE_WORDS = 2  # word k-gram width
 _NUM_PERM = 64  # signature length; Jaccard-estimate error ~ 1/sqrt(NUM_PERM)
@@ -57,6 +58,29 @@ def jaccard(a: Signature, b: Signature) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
     return sum(1 for x, y in zip(a, b, strict=True) if x == y) / len(a)
+
+
+def venue_time_match(
+    a_venue: str | None,
+    a_start: datetime | None,
+    b_venue: str | None,
+    b_start: datetime | None,
+) -> bool:
+    """Structured identity signal: two records at the *same venue* and *same start
+    time* are very likely the same real-world event, even when their titles and
+    descriptions diverge across ticket sources and languages — a recurring failure
+    mode the text signals miss together (a Russian and an English listing of one
+    show barely overlap lexically and only moderately by embedding, so both fall
+    below the merge band). It is strong evidence, not proof: a source that defaults
+    missing times to a fixed slot, or a multi-room venue, can put two *different*
+    shows at the same venue+time. So a match here *routes the pair to the judge*
+    rather than auto-merging. An empty venue or missing start can't anchor an
+    identity, so it never matches another blank."""
+    if not (a_venue and a_venue.strip()) or not (b_venue and b_venue.strip()):
+        return False
+    if a_start is None or b_start is None:
+        return False
+    return a_venue.strip().casefold() == b_venue.strip().casefold() and a_start == b_start
 
 
 def combined_similarity(cosine: float, lexical: float) -> float:
