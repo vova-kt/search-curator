@@ -18,7 +18,7 @@ from events_curator.models import (
     Vector,
 )
 from events_curator.rank import PreferenceRanker
-from events_curator.rank._rerank import build_rerank_prompt, parse_rerank
+from events_curator.rank._rerank import build_rerank_prompt, parse_submission
 from events_curator.rank._score import cosine, doc_text, taste_score
 
 
@@ -33,16 +33,22 @@ class FakeEmbedder:
 
 
 class FakeReranker:
-    """Returns a preset reply and records the prompts it saw."""
+    """Returns a preset submission and records the prompts it saw."""
 
     def __init__(self, reply: str) -> None:
         self._reply = reply
         self.calls = 0
 
-    async def complete(self, messages: object, *, model: str, temperature: float = 0.0) -> str:
-        del messages, model, temperature
+    async def submit(
+        self, messages: object, *, tool: object, model: str, temperature: float = 0.0
+    ) -> str:
+        del messages, tool, model, temperature
         self.calls += 1
         return self._reply
+
+    async def complete(self, messages: object, *, model: str, temperature: float = 0.0) -> str:
+        del messages, model, temperature
+        raise NotImplementedError  # the reranker answers via submit only
 
 
 def _result(
@@ -104,19 +110,19 @@ def test_doc_text_joins_title_and_description() -> None:
 # --- _rerank ---------------------------------------------------------------
 
 
-def test_parse_rerank_reads_order_and_reasons() -> None:
-    order = parse_rerank(_ranking_reply(2, 1, 3), count=3)
+def test_parse_submission_reads_order_and_reasons() -> None:
+    order = parse_submission(_ranking_reply(2, 1, 3), count=3)
     assert order == [(1, "reason 2"), (0, "reason 1"), (2, "reason 3")]
 
 
-def test_parse_rerank_drops_out_of_range_and_duplicate_indices() -> None:
-    reply = json.dumps({"ranking": [{"id": 9}, {"id": 1}, {"id": 1}, {"id": 0}]})
-    assert parse_rerank(reply, count=2) == [(0, None)]
+def test_parse_submission_drops_out_of_range_and_duplicate_indices() -> None:
+    arguments = json.dumps({"ranking": [{"id": 9}, {"id": 1}, {"id": 1}, {"id": 0}]})
+    assert parse_submission(arguments, count=2) == [(0, None)]
 
 
-def test_parse_rerank_tolerates_junk() -> None:
-    assert parse_rerank("not json", count=3) == []
-    assert parse_rerank('```json\n{"ranking": [{"id": 1}]}\n```', count=3) == [(0, None)]
+def test_parse_submission_tolerates_malformed_arguments() -> None:
+    assert parse_submission("not json", count=3) == []
+    assert parse_submission("{}", count=3) == []  # no ranking key -> empty order
 
 
 def test_build_rerank_prompt_carries_summary_and_candidates() -> None:

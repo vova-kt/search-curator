@@ -32,10 +32,12 @@ NL summary captures nuance the centroids can't.
 every result on the liked-minus-disliked axis and keeps the top `rank.top_n` —
 cheap because it reuses each canonical's stored embedding and only embeds (one
 batched call) the rare result that lacks one. An **LLM reranker**, fed the NL
-summary, then orders that kept set. The reranker's reply is parsed conservatively:
-any candidate the model drops or names twice is repaired (omitted ones are appended
-in prefilter order), so a misbehaving reply can never lose or duplicate a result —
-the same defensive posture as dedup's judge.
+summary, then orders that kept set. It answers through a `submit_ranking` function
+tool (the submit-tool pattern, like search extraction — `rank/_rerank.py`), so the
+order comes back as typed arguments instead of parsed prose. The submission is read
+conservatively: any candidate the model drops or names twice is repaired (omitted
+ones are appended in prefilter order), so a misbehaving reply can never lose or
+duplicate a result — the same defensive posture as dedup's judge.
 
 A couple of **exploration slots** (`rank.exploration_slots`) are then carved out of
 the returned list for the most *uncertain* leftover candidates — those whose taste
@@ -52,7 +54,7 @@ the prerequisite, and it's deferred until the taste+LLM signal proves insufficie
 All thresholds live in `config.py`. The reranker's model, temperature, and system
 prompt are the `rank_reranker` LLM role and the summary rewriter's are
 `feedback_summary` — each defined under `[llm.roles.<role>]` in config and passed
-in per `complete()` call, so neither stage carries model state. See
+in per LLM call, so neither stage carries model state. See
 [deployment.md](deployment.md#configuration).
 
 ## Learning from feedback

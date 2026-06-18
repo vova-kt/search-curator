@@ -62,10 +62,10 @@ those rows into ranked `RawSearchResult`s. URLs are **canonicalized here**, at
 ingestion — the point the corpus first sees an item — so cosmetic variants
 (`www.`, tracking params, fragments, trailing slashes) collapse to one key and
 dedup downstream compares like with like. The backend is a *dedicated* port, not
-the shared `llm` module's `LLMClient`: native web search needs tool use plus
-structured extraction, a different capability than `complete()`'s string-in/
-string-out, and keeping it separate stops that contract from leaking into dedup,
-rank, and feedback.
+the shared `llm` module's `LLMClient`: native web search drives the provider's
+built-in web-search tool through multi-step research, a different capability than
+the chat client's text `complete()` and single-tool `submit()`, and keeping it
+separate stops that contract from leaking into dedup, rank, and feedback.
 
 Shipped today: the engine plus `OpenAIWebSearch`, the concrete backend over
 OpenAI's Responses web-search tool (extra `llm`, re-exported lazily from the

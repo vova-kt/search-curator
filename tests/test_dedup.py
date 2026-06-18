@@ -1,7 +1,6 @@
 """ThresholdDeduper reconciles candidates against the stored corpus: exact-URL and
 high-similarity matches merge into a golden record, the ambiguous band defers to an
-LLM judge, and everything else is inserted new. Plus the dependency-free helpers:
-MinHash similarity, the judge prompt/parse, and golden-record survivorship."""
+LLM judge, and everything else is inserted new."""
 
 from __future__ import annotations
 
@@ -48,6 +47,17 @@ class FakeJudge:
         del model, temperature
         self.calls.append(messages)
         return self._verdict
+
+    async def submit(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tool: dict[str, object],
+        model: str,
+        temperature: float = 0.0,
+    ) -> str:
+        del messages, tool, model, temperature
+        raise NotImplementedError  # the judge answers via complete only
 
 
 def _cand(

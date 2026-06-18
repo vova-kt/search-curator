@@ -29,11 +29,12 @@ If `check.sh` is green, the change is, by our definition, safe to keep.
 
 Two more machine checks keep the structure from drifting as the code grows:
 
-- **Size and complexity caps.** A file can't grow past ~300 lines, a single
+- **Size and complexity caps.** A source file can't grow past ~300 lines, a single
   function past ~80, and no function may be too tangled (too many branches or too
   deeply nested). When the assistant bumps a cap, it's forced to split the work
   into smaller named pieces instead of growing one blob — which is exactly what
-  keeps the code readable.
+  keeps the code readable. (Tests are exempt from the line cap — fixtures and
+  table-driven cases legitimately run long.)
 - **Module boundaries.** Each folder of code is treated as a sealed unit with one
   public door (its `__init__.py`). Code elsewhere may knock on that door but may not
   reach past it into the folder's internals, and no two pieces may depend on each

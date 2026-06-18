@@ -1,8 +1,7 @@
-"""`LLMClient` over OpenAI's Chat Completions API (extra `llm`). One
-`chat.completions.create` call per `complete()`: messages in, assistant text out.
-Imported only via the module door's lazy re-export, so the base `llm` import never
-needs the extra — and `from events_curator.llm import OpenAIChat` raises a clear
-ImportError when `llm` isn't installed."""
+"""`LLMClient` over OpenAI's Chat Completions API.
+`complete()` returns assistant text;
+`submit()` forces the supplied function tool and returns its raw JSON arguments
+"""
 
 from __future__ import annotations
 
@@ -10,7 +9,7 @@ from collections.abc import Sequence
 from typing import cast
 
 from openai import AsyncOpenAI
-from openai.types.chat import ChatCompletionMessageParam
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
 from events_curator.llm import ChatMessage, LLMClient
 
@@ -22,13 +21,37 @@ class OpenAIChat(LLMClient):
     async def complete(
         self, messages: Sequence[ChatMessage], *, model: str, temperature: float = 0.0
     ) -> str:
-        payload = cast(
-            "list[ChatCompletionMessageParam]",
-            [{"role": m.role, "content": m.content} for m in messages],
-        )
         response = await self._client.chat.completions.create(
             model=model,
-            messages=payload,
+            messages=self._payload(messages),
             temperature=temperature,
         )
         return response.choices[0].message.content or ""
+
+    async def submit(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tool: dict[str, object],
+        model: str,
+        temperature: float = 0.0,
+    ) -> str:
+        # `tool_choice="required"` makes the model answer through the one supplied tool
+        response = await self._client.chat.completions.create(
+            model=model,
+            messages=self._payload(messages),
+            temperature=temperature,
+            tools=[cast("ChatCompletionToolParam", tool)],
+            tool_choice="required",
+        )
+        for call in response.choices[0].message.tool_calls or []:
+            if call.type == "function":
+                return call.function.arguments
+        return ""
+
+    @staticmethod
+    def _payload(messages: Sequence[ChatMessage]) -> list[ChatCompletionMessageParam]:
+        return cast(
+            "list[ChatCompletionMessageParam]",
+            [{"role": m.role, "content": m.content} for m in messages],
+        )

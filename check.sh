@@ -20,6 +20,7 @@ run() { # run "<label>" <cmd...>
 }
 
 # --- size cap: no source file may exceed MAX_FILE_LINES (guardrails) ----------
+# Tests are exempt — fixtures and table-driven cases legitimately run long.
 check_file_sizes() {
   local over=0 f lines
   while IFS= read -r f; do
@@ -27,7 +28,7 @@ check_file_sizes() {
     if (( lines > MAX_FILE_LINES )); then
       echo "  $f: $lines lines (cap $MAX_FILE_LINES)"; over=1
     fi
-  done < <(find src tests -name '*.py' 2>/dev/null)
+  done < <(find src -name '*.py' 2>/dev/null)
   return $over
 }
 

@@ -1,22 +1,4 @@
-"""Default wiring. Assembles a pipeline from config: the real IdentityExpander,
-the real FrontierWebSearch engine, the RRFMerger, the real ThresholdDeduper, the
-real PreferenceRanker, and the real ProfileUpdater over the in-memory store.
-
-The adapters those stages drive — the web-search backend, the LLM client, and the
-embedder — are chosen from config by the `build_search_backend`, `build_llm`, and
-`build_embedder` factories. The search backend and LLM return the real OpenAI
-adapter once it's usable (an API key is set and the `llm` extra is installed); the
-embedder defaults to the local bge-small `SentenceTransformer` (extra `embed`) and
-can instead use the OpenAI embeddings API. When the selected backend isn't usable
-each factory falls back to the matching `Unconfigured*` placeholder, which raises
-with a pointer to what to wire next — so a default, keyless run reaches the
-web-search placeholder and stops there before any later stage runs.
-
-Three more config-driven factories live here so every UI wires the same way:
-`build_storage` picks the persistent SQLite store (or the in-memory store for
-`:memory:`), `build_authenticator` picks the `Authenticator` for the configured
-`AuthScheme`, and `build_search_engine` picks the `SearchEngine` for the configured
-`SearchEngineKind`."""
+"""Default wiring. Assembles a pipeline from config."""
 
 from __future__ import annotations
 
@@ -46,19 +28,10 @@ IN_MEMORY_DB_PATH = ":memory:"
 
 
 def _openai_ready(config: AppConfig) -> bool:
-    """Whether the OpenAI-backed adapters can be built: an API key is configured and
-    the `llm` extra (the `openai` package) is importable. When false the builder
-    falls back to an `Unconfigured*` placeholder that raises a pointer when used."""
     return bool(config.llm.api_key) and importlib.util.find_spec("openai") is not None
 
 
 def build_embedder(config: AppConfig) -> Embedder:
-    """The embedder for the configured `EmbedderKind`: the local bge-small
-    `SentenceTransformer` (`BGE_SMALL`, extra `embed`) or OpenAI's embeddings API
-    (`OPENAI`, extra `llm`, reusing the `llm` key). Falls back to
-    `UnconfiguredEmbedder` when the selected backend isn't usable — the `embed`
-    extra missing for bge, or no key/`llm` extra for OpenAI — so an unconfigured run
-    reaches the placeholder and stops with a pointer to what to wire next."""
     match config.embedding.kind:
         case EmbedderKind.BGE_SMALL:
             if importlib.util.find_spec("sentence_transformers") is None:
@@ -75,11 +48,6 @@ def build_embedder(config: AppConfig) -> Embedder:
 
 
 def build_llm(config: AppConfig) -> LLMClient:
-    """The LLM client for the configured `LLMProvider`: `OpenAIChat` when usable,
-    else `UnconfiguredLLM`. The client is stateless about model/temperature — those
-    are per-call (`LLMClient.complete`), resolved per call site via
-    `config.llm.for_role` and passed by each stage, so one client serves them all.
-    Anthropic is enumerated but has no adapter yet."""
     match config.llm.provider:
         case LLMProvider.OPENAI:
             if not _openai_ready(config):
@@ -94,11 +62,6 @@ def build_llm(config: AppConfig) -> LLMClient:
 
 
 def build_search_backend(config: AppConfig) -> WebSearchBackend:
-    """The backend the frontier engine drives: OpenAI's native web-search tool when
-    usable, else `UnconfiguredWebSearch`. Reuses the `llm` model/key and takes its
-    steering prompt, per-query input prompt, and tool tuning from `[search]`. The
-    geographic bias is not
-    config — it's the requesting user's `location`, threaded in per run."""
     if not _openai_ready(config):
         return UnconfiguredWebSearch()
     from events_curator.search import OpenAIWebSearch  # noqa: PLC0415  (keeps `llm` optional)
@@ -117,8 +80,6 @@ def build_search_backend(config: AppConfig) -> WebSearchBackend:
 
 
 def build_search_engine(config: AppConfig) -> SearchEngine:
-    """The search engine for the configured `SearchEngineKind`. Only the frontier
-    native engine ships; the other kinds are enumerated but have no adapter yet."""
     if config.search.engine is SearchEngineKind.FRONTIER_NATIVE:
         return FrontierWebSearch(
             build_search_backend(config), max_results=config.search.max_results_per_query
@@ -129,11 +90,6 @@ def build_search_engine(config: AppConfig) -> SearchEngine:
 
 
 def build_default_stages(config: AppConfig) -> Stages:
-    # One embedder and one LLM client, shared across the stages that need them, so a
-    # real adapter opens a single backing client rather than one per stage. The LLM
-    # client is model/temperature-agnostic; each stage carries its own call site's
-    # model/temperature/prompt (`config.llm.for_role`) and passes them per call, so a
-    # single client still serves every call site.
     embedder = build_embedder(config)
     llm = build_llm(config)
     judge = config.llm.for_role(LLMRole.DEDUP_JUDGE)
@@ -173,10 +129,6 @@ def build_default_stages(config: AppConfig) -> Stages:
 
 
 def build_storage(config: AppConfig) -> Storage:
-    """Storage from config: the dependency-free in-memory store when `db_path` is
-    `:memory:` (tests/eval), else `SqliteStorage` at the configured path. SQLite is
-    imported lazily so the `store` extra is only required when actually selected.
-    The returned store still needs `await storage.init()` before use."""
     if config.storage.db_path == IN_MEMORY_DB_PATH:
         return InMemoryStorage()
     from events_curator.storage import SqliteStorage  # noqa: PLC0415  (keeps `store` optional)
@@ -185,8 +137,6 @@ def build_storage(config: AppConfig) -> Storage:
 
 
 def build_authenticator(config: AppConfig) -> Authenticator:
-    """The `Authenticator` for the configured `AuthScheme`. Adding a scheme means
-    adding its case here alongside the `Authenticator` implementation in `auth/`."""
     match config.auth.scheme:
         case AuthScheme.LOCAL:
             return LocalAuthenticator()

@@ -1,6 +1,7 @@
-"""OpenAIChat wiring (the `llm` extra): it asks the Chat Completions API with the
-given messages and returns the assistant text. The network call is stubbed — only
-the request shape and response handling are under test."""
+"""OpenAIChat wiring (the `llm` extra): `complete` asks the Chat Completions API
+and returns the assistant text; `submit` forces the supplied function tool and
+returns its raw arguments. The network call is stubbed — only the request shape and
+response handling are under test."""
 
 from __future__ import annotations
 
@@ -53,3 +54,46 @@ async def test_complete_handles_empty_content(monkeypatch: pytest.MonkeyPatch) -
     llm = OpenAIChat(client=client)
 
     assert await llm.complete([ChatMessage(role="user", content="hi")], model="gpt-4o-mini") == ""
+
+
+async def test_submit_forces_tool_and_returns_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_create(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        function = SimpleNamespace(name="submit_ranking", arguments='{"ranking": []}')
+        call = SimpleNamespace(type="function", function=function)
+        message = SimpleNamespace(tool_calls=[call])
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    client = AsyncOpenAI(api_key="test")
+    monkeypatch.setattr(client.chat.completions, "create", fake_create)
+    llm = OpenAIChat(client=client)
+    tool: dict[str, object] = {
+        "type": "function",
+        "function": {"name": "submit_ranking", "parameters": {}},
+    }
+
+    arguments = await llm.submit(
+        [ChatMessage(role="user", content="rank these")], tool=tool, model="gpt-4o-mini"
+    )
+
+    assert arguments == '{"ranking": []}'
+    assert captured["tools"] == [tool]
+    assert captured["tool_choice"] == "required"
+
+
+async def test_submit_returns_empty_without_a_tool_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_create(**kwargs: Any) -> Any:
+        del kwargs
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=None))])
+
+    client = AsyncOpenAI(api_key="test")
+    monkeypatch.setattr(client.chat.completions, "create", fake_create)
+    llm = OpenAIChat(client=client)
+    tool: dict[str, object] = {
+        "type": "function",
+        "function": {"name": "submit_ranking", "parameters": {}},
+    }
+
+    assert await llm.submit([ChatMessage(role="user", content="hi")], tool=tool, model="m") == ""

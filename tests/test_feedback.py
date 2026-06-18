@@ -45,6 +45,12 @@ class FakeSummarizer:
         self.calls += 1
         return self._reply
 
+    async def submit(
+        self, messages: object, *, tool: object, model: str, temperature: float = 0.0
+    ) -> str:
+        del messages, tool, model, temperature
+        raise NotImplementedError  # the summarizer answers via complete only
+
 
 QID = SavedQueryId("q1")
 

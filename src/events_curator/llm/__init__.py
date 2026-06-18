@@ -1,14 +1,3 @@
-"""LLM port. Used by dedup (tiebreak judge), rank (preference reranker), and
-feedback (profile summarization).
-
-`ChatMessage`, the `LLMClient` protocol, and the `UnconfiguredLLM` default are the
-dependency-free core. `OpenAIChat` (the concrete adapter, extra `llm`) is
-re-exported lazily, so importing this door never pulls in the optional extra.
-`from events_curator.llm import OpenAIChat` loads it on demand and raises a clear
-ImportError if `llm` is not installed — same pattern as `search.OpenAIWebSearch`
-and `storage.SqliteStorage`.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -28,19 +17,37 @@ class ChatMessage(BaseModel):
 class LLMClient(Protocol):
     async def complete(
         self, messages: Sequence[ChatMessage], *, model: str, temperature: float = 0.0
+    ) -> str: ...
+
+    async def submit(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tool: dict[str, object],
+        model: str,
+        temperature: float = 0.0,
     ) -> str:
-        """Complete a chat. `model` and `temperature` are per-call so one client can
-        serve every call site, each with its own configured model/temperature."""
+        """The submit-tool pattern: the caller derives `tool` from a Pydantic schema,
+        so the model returns typed arguments instead of free-form prose"""
         ...
 
 
 class UnconfiguredLLM(LLMClient):
-    """Default placeholder. Swap in `OpenAIChat` (extra `llm`) or another adapter."""
-
     async def complete(
         self, messages: Sequence[ChatMessage], *, model: str, temperature: float = 0.0
     ) -> str:
         del messages, model, temperature
+        raise NotImplementedError("No LLM adapter; install the `llm` extra and wire one.")
+
+    async def submit(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tool: dict[str, object],
+        model: str,
+        temperature: float = 0.0,
+    ) -> str:
+        del messages, tool, model, temperature
         raise NotImplementedError("No LLM adapter; install the `llm` extra and wire one.")
 
 
