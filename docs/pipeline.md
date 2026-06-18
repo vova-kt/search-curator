@@ -77,10 +77,11 @@ default, keyless run still reaches the placeholder and stops there.
 Extraction is **tool-shaped, not text-parsed**: the backend offers the model a
 `submit_results` function tool whose JSON schema is generated from `ExtractedResult`,
 and reads the typed arguments of that tool call rather than parsing a free-form
-reply — the row shape stays single-sourced in the Pydantic model. The model's
-steering prompt is config, not code (`[search].instructions`), so a deployment can
-retune it without a release. The prompt/tool/parse contract lives in
-`search/_extract.py`, kept dependency-free so it is unit-tested without the network.
+reply — the row shape stays single-sourced in the Pydantic model. Both prompts are
+config, not code — the system `[search].instructions` and the per-query input
+`[search].prompt` (a template filled with the query and result budget) — so a
+deployment can retune either without a release. The prompt/tool/parse contract lives
+in `search/_extract.py`, kept dependency-free so it is unit-tested without the network.
 
 The row shape is **domain-agnostic on purpose**: beyond the typed fields it carries
 a free-form `attributes` map (`dict[str, str]`) for facts that matter to one kind of

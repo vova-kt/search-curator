@@ -27,15 +27,10 @@ _SUBMIT_TOOL_DESCRIPTION = (
 )
 
 
-def build_search_prompt(query: str, *, max_results: int) -> str:
-    return (
-        f"Find up to {max_results} results for: {query}\n\n"
-        "Fill every field of each result that the source supports. Put facts that "
-        "matter for this kind of item but have no dedicated field into `attributes` "
-        "as a flat string-to-string map — for example authors and journal for a "
-        "paper, company and salary for a job, organizer for an event. Use lowercase "
-        "snake_case keys and omit anything you cannot find."
-    )
+def build_search_prompt(template: str, query: str, *, max_results: int) -> str:
+    """Fill the configured input-prompt template (`[search].prompt`) with this query
+    and result budget. The template carries `{query}` and `{max_results}` fields."""
+    return template.format(query=query, max_results=max_results)
 
 
 def submit_tool() -> dict[str, object]:

@@ -164,7 +164,9 @@ def test_parse_submission_raises_on_malformed_arguments() -> None:
         parse_submission("not json at all", max_results=10)
 
 
-def test_build_search_prompt_carries_query_and_budget() -> None:
-    prompt = build_search_prompt("trail races", max_results=7)
+def test_build_search_prompt_fills_template() -> None:
+    prompt = build_search_prompt(
+        "Find up to {max_results} results for: {query}", "trail races", max_results=7
+    )
     assert "trail races" in prompt
     assert "7" in prompt

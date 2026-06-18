@@ -35,9 +35,10 @@ model = "BAAI/bge-small-en-v1.5"
 dimensions = 384
 
 # --- Search ---
-# `instructions` is the system prompt steering the native web-search backend. The
-# shape of each result is defined by the `submit_results` function tool's schema
-# (derived from ExtractedResult), so the prompt need not enumerate fields.
+# `instructions` is the system prompt steering the native web-search backend; `prompt`
+# is the per-query input prompt template, filled with the `{query}` and `{max_results}`
+# placeholders per call. The shape of each result is defined by the `submit_results`
+# function tool's schema (derived from ExtractedResult), so neither need enumerate fields.
 # `search_context_size` (low|medium|high) trades cost for recall; `reasoning_effort`
 # (none|minimal|low|medium|high|xhigh) is the model's thinking budget; `allowed_domains`
 # restricts web_search to an allow-list (empty = no restriction). Geographic bias is
@@ -50,6 +51,9 @@ search_context_size = "medium"
 reasoning_effort = "medium"
 allowed_domains = []
 instructions = """You are a web research assistant. Use web search to find current, real results that satisfy the user's request, read the pages you find, and extract structured data. When you are done, call the `submit_results` tool exactly once with every result you found; do not reply in prose. Omit any result you cannot tie to a real, absolute http(s) URL."""
+prompt = """Find up to {max_results} results for: {query}
+
+Fill every field of each result that the source supports. Put facts that matter for this kind of item but have no dedicated field into `attributes` as a flat string-to-string map — for example authors and journal for a paper, company and salary for a job, organizer for an event. Use lowercase snake_case keys and omit anything you cannot find."""
 
 # --- Dedup thresholds ---
 [dedup]

@@ -70,6 +70,7 @@ class SearchSettings(BaseModel):
     reasoning_effort: ReasoningEffort  # the web-search model's thinking budget
     allowed_domains: list[str]  # restrict web_search to these domains; empty = no restriction
     instructions: str  # system prompt steering the native web-search backend
+    prompt: str  # per-query input prompt template; `{query}`/`{max_results}` placeholders
 
 
 class DedupSettings(BaseModel):

@@ -42,12 +42,14 @@ class OpenAIWebSearch(WebSearchBackend):
         *,
         model: str,
         instructions: str,
+        prompt: str,
         tuning: WebSearchTuning,
         api_key: str = "",
         client: AsyncOpenAI | None = None,
     ) -> None:
         self._model = model
         self._instructions = instructions
+        self._prompt = prompt
         self._tuning = tuning
         self._client = client or AsyncOpenAI(api_key=api_key)
 
@@ -57,7 +59,7 @@ class OpenAIWebSearch(WebSearchBackend):
         response = await self._client.responses.create(
             model=self._model,
             instructions=self._instructions,
-            input=build_search_prompt(query, max_results=max_results),
+            input=build_search_prompt(self._prompt, query, max_results=max_results),
             tools=[self._web_search_tool(location), cast("FunctionToolParam", submit_tool())],
             reasoning=Reasoning(effort=self._tuning.reasoning_effort.value),
         )

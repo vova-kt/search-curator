@@ -36,6 +36,7 @@ search_context_size = "medium"
 reasoning_effort = "medium"
 allowed_domains = []
 instructions = "test search instructions"
+prompt = "Find up to {max_results} results for: {query}"
 
 [dedup]
 auto_merge_threshold = 0.88

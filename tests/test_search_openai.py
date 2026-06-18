@@ -32,7 +32,11 @@ def _tuning(**overrides: Any) -> WebSearchTuning:
 
 def _backend(client: AsyncOpenAI, tuning: WebSearchTuning | None = None) -> OpenAIWebSearch:
     return OpenAIWebSearch(
-        model="gpt-4o-mini", instructions="find stuff", tuning=tuning or _tuning(), client=client
+        model="gpt-4o-mini",
+        instructions="find stuff",
+        prompt="Find up to {max_results} results for: {query}",
+        tuning=tuning or _tuning(),
+        client=client,
     )
 
 

@@ -96,7 +96,8 @@ def build_llm(config: AppConfig) -> LLMClient:
 def build_search_backend(config: AppConfig) -> WebSearchBackend:
     """The backend the frontier engine drives: OpenAI's native web-search tool when
     usable, else `UnconfiguredWebSearch`. Reuses the `llm` model/key and takes its
-    steering prompt and tool tuning from `[search]`. The geographic bias is not
+    steering prompt, per-query input prompt, and tool tuning from `[search]`. The
+    geographic bias is not
     config — it's the requesting user's `location`, threaded in per run."""
     if not _openai_ready(config):
         return UnconfiguredWebSearch()
@@ -106,6 +107,7 @@ def build_search_backend(config: AppConfig) -> WebSearchBackend:
         model=config.llm.model,
         api_key=config.llm.api_key,
         instructions=config.search.instructions,
+        prompt=config.search.prompt,
         tuning=WebSearchTuning(
             search_context_size=config.search.search_context_size,
             reasoning_effort=config.search.reasoning_effort,
