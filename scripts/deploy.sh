@@ -19,7 +19,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 branch="${DEPLOY_BRANCH:-master}"
-profile="${DEPLOY_PROFILE:-headless}"
+profile="${DEPLOY_PROFILE:-bot}"
 state_file="$repo_root/.deploy-state"
 
 git fetch --quiet origin "$branch"
@@ -31,8 +31,9 @@ if [[ "$remote_rev" == "$deployed_rev" ]]; then
 fi
 
 echo "deploy: $branch at $remote_rev (last deployed: ${deployed_rev:-none}) — gating"
-git checkout --quiet "$branch"
-git pull --quiet --ff-only origin "$branch"
+# Detached, forced checkout of the fetched commit — tolerates a force-pushed
+# (rewound or rebased) origin, where a tracking-branch fast-forward would fail.
+git checkout --quiet --force --detach "$remote_rev"
 
 # Mirror CI: refresh the locked env, then run the full guardrail gate. Only a
 # green gate is allowed to reach `compose up`.

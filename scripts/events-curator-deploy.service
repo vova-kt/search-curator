@@ -7,5 +7,5 @@ After=network-online.target docker.service
 Type=oneshot
 # Point this at the checkout on the host and pick the scheduler profile.
 WorkingDirectory=/opt/events-curator
-Environment=DEPLOY_PROFILE=headless
+Environment=DEPLOY_PROFILE=bot
 ExecStart=/opt/events-curator/scripts/deploy.sh

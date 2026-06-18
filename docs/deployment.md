@@ -89,8 +89,11 @@ sudo systemctl enable --now events-curator-deploy.timer
 journalctl -u events-curator-deploy.service -f   # watch deploys
 ```
 
-The host's checkout is treated as read-only: the script fast-forwards only
-(`git pull --ff-only`) and never touches the untracked `config.toml`.
+The host's checkout is treated as read-only: the script does a detached, forced
+checkout of the fetched commit (`git checkout -f --detach`), so it tracks
+whatever `origin` points at even across a **force-push** (a rewound or rebased
+branch) — a tracking-branch fast-forward would fail there. The untracked
+`config.toml` is never touched.
 
 ## Resetting
 
