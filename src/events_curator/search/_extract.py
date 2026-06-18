@@ -6,12 +6,18 @@ network (or the `llm` extra)."""
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import cast
 
 from pydantic import ValidationError
 
+from events_curator.enums import Stage
 from events_curator.search.frontier import ExtractedResult
+
+# Helper of the search stage, so its parse trace groups under the search stage
+# logger (`events_curator.stage.search`) for per-stage tuning.
+_LOG = logging.getLogger(f"events_curator.stage.{Stage.SEARCH.value}")
 
 SEARCH_INSTRUCTIONS = (
     "You are a web research assistant. Use web search to find current, real "
@@ -34,15 +40,22 @@ def parse_extracted(text: str, *, max_results: int) -> list[ExtractedResult]:
     """Read a model's JSON reply into validated rows. The top-level payload must
     parse (a malformed reply is a real failure, not silently dropped); individual
     rows that fail validation are skipped as expected model noise."""
+    rows = _rows(text)
+    _LOG.debug("parsing %d candidate row(s) (max_results=%d)", len(rows), max_results)
     results: list[ExtractedResult] = []
-    for row in _rows(text):
+    skipped = 0
+    for row in rows:
         if len(results) >= max_results:
             break
         if isinstance(row, dict):
             try:
                 results.append(ExtractedResult.model_validate(row))
             except ValidationError:
+                skipped += 1
                 continue
+        else:
+            skipped += 1
+    _LOG.debug("extracted %d result(s), skipped %d invalid row(s)", len(results), skipped)
     return results
 
 
@@ -50,7 +63,10 @@ def _rows(text: str) -> list[object]:
     payload: object = json.loads(_strip_fence(text))
     if isinstance(payload, dict):
         payload = cast("dict[str, object]", payload).get("results")
-    return cast("list[object]", payload) if isinstance(payload, list) else []
+    if not isinstance(payload, list):
+        _LOG.debug("reply had no top-level results array; treating as zero rows")
+        return []
+    return cast("list[object]", payload)
 
 
 def _strip_fence(text: str) -> str:

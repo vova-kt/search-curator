@@ -15,10 +15,10 @@ from events_curator.search._extract import (
     build_search_prompt,
     parse_extracted,
 )
-from events_curator.search.frontier import ExtractedResult
+from events_curator.search.frontier import ExtractedResult, WebSearchBackend
 
 
-class OpenAIWebSearch:
+class OpenAIWebSearch(WebSearchBackend):
     def __init__(self, *, model: str, api_key: str = "", client: AsyncOpenAI | None = None) -> None:
         self._model = model
         self._client = client or AsyncOpenAI(api_key=api_key)

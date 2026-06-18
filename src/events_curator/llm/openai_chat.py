@@ -12,10 +12,10 @@ from typing import cast
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
-from events_curator.llm import ChatMessage
+from events_curator.llm import ChatMessage, LLMClient
 
 
-class OpenAIChat:
+class OpenAIChat(LLMClient):
     def __init__(self, *, api_key: str = "", client: AsyncOpenAI | None = None) -> None:
         self._client = client or AsyncOpenAI(api_key=api_key)
 

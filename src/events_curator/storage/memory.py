@@ -28,6 +28,7 @@ from events_curator.storage.protocols import (
     PreferenceStore,
     SavedQueryStore,
     SearchResultStore,
+    Storage,
     UserStore,
 )
 
@@ -53,7 +54,7 @@ def _city_matches(a: str | None, b: str | None) -> bool:
     return a.strip().casefold() == b.strip().casefold()
 
 
-class InMemoryUserStore:
+class InMemoryUserStore(UserStore):
     def __init__(self, users: dict[UserId, User]) -> None:
         self._users = users
 
@@ -64,7 +65,7 @@ class InMemoryUserStore:
         self._users[user.id] = user
 
 
-class InMemorySavedQueryStore:
+class InMemorySavedQueryStore(SavedQueryStore):
     def __init__(self, queries: dict[SavedQueryId, SavedQuery]) -> None:
         self._queries = queries
 
@@ -81,7 +82,7 @@ class InMemorySavedQueryStore:
         self._queries[query.id] = query
 
 
-class InMemorySearchResultStore:
+class InMemorySearchResultStore(SearchResultStore):
     def __init__(self) -> None:
         self._raw: dict[RawSearchResultId, RawSearchResult] = {}
         self._canonical: dict[CanonicalSearchResultId, CanonicalSearchResult] = {}
@@ -134,7 +135,7 @@ class InMemorySearchResultStore:
         return [self._canonical[i] for i in ids if i in self._canonical]
 
 
-class InMemoryFeedbackStore:
+class InMemoryFeedbackStore(FeedbackStore):
     def __init__(self) -> None:
         self._by_query: dict[SavedQueryId, list[Feedback]] = {}
 
@@ -145,7 +146,7 @@ class InMemoryFeedbackStore:
         return list(self._by_query.get(query_id, []))
 
 
-class InMemoryPreferenceStore:
+class InMemoryPreferenceStore(PreferenceStore):
     def __init__(self) -> None:
         self._profiles: dict[SavedQueryId, PreferenceProfile] = {}
 
@@ -156,7 +157,7 @@ class InMemoryPreferenceStore:
         self._profiles[profile.saved_query_id] = profile
 
 
-class InMemoryStorage:
+class InMemoryStorage(Storage):
     """Implements the `Storage` facade with plain dicts."""
 
     def __init__(self) -> None:

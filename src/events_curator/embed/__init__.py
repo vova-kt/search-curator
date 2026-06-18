@@ -26,7 +26,7 @@ class Embedder(Protocol):
     async def embed(self, texts: Sequence[str]) -> list[Vector]: ...
 
 
-class UnconfiguredEmbedder:
+class UnconfiguredEmbedder(Embedder):
     """Default placeholder. Swap in `BgeEmbedder` (extra `embed`) or `OpenAIEmbedder`
     (extra `llm`)."""
 

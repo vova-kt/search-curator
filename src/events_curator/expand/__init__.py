@@ -7,19 +7,24 @@ identity stub — a singleton list of the user's own query.
 
 from __future__ import annotations
 
+import logging
 from typing import Protocol
 
+from events_curator.enums import Stage
 from events_curator.models import ExpandedQuery, ExpandedQuerySet, SavedQuery
+
+_LOG = logging.getLogger(f"events_curator.stage.{Stage.EXPAND.value}")
 
 
 class Expander(Protocol):
     async def expand(self, query: SavedQuery) -> ExpandedQuerySet: ...
 
 
-class IdentityExpander:
+class IdentityExpander(Expander):
     """STUB: user query -> singleton list of user query. Replace with LLM fan-out."""
 
     async def expand(self, query: SavedQuery) -> ExpandedQuerySet:
+        _LOG.debug(f"identity: expanding query id={query.id}")
         return ExpandedQuerySet(
             saved_query_id=query.id,
             queries=[ExpandedQuery(saved_query_id=query.id, text=query.text)],

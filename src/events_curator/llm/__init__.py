@@ -34,7 +34,7 @@ class LLMClient(Protocol):
         ...
 
 
-class UnconfiguredLLM:
+class UnconfiguredLLM(LLMClient):
     """Default placeholder. Swap in `OpenAIChat` (extra `llm`) or another adapter."""
 
     async def complete(

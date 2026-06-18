@@ -11,13 +11,14 @@ import asyncio
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
 
+from events_curator.embed import Embedder
 from events_curator.models import Vector
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
 
 
-class BgeEmbedder:
+class BgeEmbedder(Embedder):
     def __init__(self, *, model: str) -> None:
         self._model_name = model
         self._model: SentenceTransformer | None = None

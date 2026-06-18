@@ -24,7 +24,7 @@ class Merger(Protocol):
     def merge(self, ranked_lists: Sequence[Sequence[RawSearchResult]]) -> list[RawSearchResult]: ...
 
 
-class RRFMerger:
+class RRFMerger(Merger):
     def __init__(self, k: int = 60) -> None:
         self._k = k
 

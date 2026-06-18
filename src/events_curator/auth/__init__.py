@@ -8,17 +8,20 @@ no storage lookup is needed; the app layer upserts the `User` row on first sight
 
 from __future__ import annotations
 
+import logging
 from typing import Protocol
 
 from events_curator.enums import AuthScheme
 from events_curator.models import Principal, SavedQuery, UserId
+
+logger = logging.getLogger("authenticator")
 
 
 class Authenticator(Protocol):
     async def authenticate(self, credential: str) -> Principal | None: ...
 
 
-class LocalAuthenticator:
+class LocalAuthenticator(Authenticator):
     """LOCAL scheme: a single operator. Every credential is the same person."""
 
     def __init__(self, user_id: UserId | None = None) -> None:
@@ -26,14 +29,16 @@ class LocalAuthenticator:
 
     async def authenticate(self, credential: str) -> Principal:
         del credential
+        logger.debug("local: authenticating")
         return Principal(user_id=self._user_id, scheme=AuthScheme.LOCAL, display_name="local")
 
 
-class TelegramAuthenticator:
+class TelegramAuthenticator(Authenticator):
     """TELEGRAM scheme: the credential is the chat id; user id is namespaced."""
 
     async def authenticate(self, credential: str) -> Principal | None:
         chat_id = credential.strip()
+        logger.debug(f"telegram: authenticating chat_id='{chat_id}'")
         if not chat_id:
             return None
         return Principal(user_id=UserId(f"tg:{chat_id}"), scheme=AuthScheme.TELEGRAM)

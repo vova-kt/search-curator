@@ -34,13 +34,14 @@ from events_curator.storage.protocols import (
     PreferenceStore,
     SavedQueryStore,
     SearchResultStore,
+    Storage,
     UserStore,
 )
 
 _SECONDS_PER_DAY = 86_400
 
 
-class SqliteUserStore:
+class SqliteUserStore(UserStore):
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
@@ -56,7 +57,7 @@ class SqliteUserStore:
         self._conn.commit()
 
 
-class SqliteSavedQueryStore:
+class SqliteSavedQueryStore(SavedQueryStore):
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
@@ -93,7 +94,7 @@ class SqliteSavedQueryStore:
         self._conn.commit()
 
 
-class SqliteSearchResultStore:
+class SqliteSearchResultStore(SearchResultStore):
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
@@ -182,7 +183,7 @@ class SqliteSearchResultStore:
         return [load_canonical(r["data"], r["embedding"]) for r in rows]
 
 
-class SqliteFeedbackStore:
+class SqliteFeedbackStore(FeedbackStore):
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
@@ -200,7 +201,7 @@ class SqliteFeedbackStore:
         return [Feedback.model_validate_json(r["data"]) for r in rows]
 
 
-class SqlitePreferenceStore:
+class SqlitePreferenceStore(PreferenceStore):
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
@@ -232,7 +233,7 @@ class SqlitePreferenceStore:
         self._conn.commit()
 
 
-class SqliteStorage:
+class SqliteStorage(Storage):
     """Implements the `Storage` facade over one SQLite file. Call `init()` before
     use to open the connection and apply the schema; `close()` releases it."""
 

@@ -17,6 +17,7 @@ common case where two candidates share one canonical URL.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -25,7 +26,7 @@ from events_curator.dedup._golden import doc_text, merge_into, new_golden
 from events_curator.dedup._judge import build_judge_prompt, parse_judge_verdict
 from events_curator.dedup._match import combined_similarity, jaccard, text_signature
 from events_curator.embed import Embedder
-from events_curator.enums import DedupDecision
+from events_curator.enums import DedupDecision, Stage
 from events_curator.llm import LLMClient
 from events_curator.models import (
     CanonicalSearchResult,
@@ -36,6 +37,10 @@ from events_curator.models import (
     Vector,
 )
 from events_curator.storage import SearchResultStore
+
+# Per-stage logger (`events_curator.stage.dedup`); the orchestrator owns the INFO
+# milestones, so the per-candidate decision trace here lives at DEBUG.
+_LOG = logging.getLogger(f"events_curator.stage.{Stage.DEDUP.value}")
 
 
 class Deduper(Protocol):
@@ -72,7 +77,7 @@ class _RunState:
         self.url_index[canonical.url] = canonical.id
 
 
-class ThresholdDeduper:
+class ThresholdDeduper(Deduper):
     """Blocking + two-threshold similarity with an LLM tiebreak judge. Drives an
     `Embedder` (semantic signal) and an `LLMClient` (the judge); both default to
     the Unconfigured placeholders, so a run raises with a pointer to the extra to
@@ -105,13 +110,20 @@ class ThresholdDeduper:
         self, candidates: Sequence[RawSearchResult], results: SearchResultStore
     ) -> list[DedupOutcome]:
         if not candidates:
+            _LOG.debug("reconcile called with no candidates; nothing to do")
             return []
+        _LOG.debug("reconciling %d candidate(s) against the corpus", len(candidates))
         # Rule 5: all candidate embeddings are known up front -> one batched call.
         vectors = await self._embedder.embed([doc_text(c) for c in candidates])
         state = _RunState()
         outcomes: list[DedupOutcome] = []
         for candidate, vector in zip(candidates, vectors, strict=True):
             outcomes.append(await self._reconcile_one(candidate, vector, results, state))
+        _LOG.debug(
+            "reconcile done: %d outcome(s) across %d canonical(s)",
+            len(outcomes),
+            len(state.by_id),
+        )
         return outcomes
 
     async def _reconcile_one(
@@ -123,21 +135,48 @@ class ThresholdDeduper:
     ) -> DedupOutcome:
         same_url = state.url_index.get(candidate.url)
         if same_url is not None:
+            _LOG.debug(
+                "_reconcile_one: exact-URL hit for %s -> merging into %s", candidate.url, same_url
+            )
             return await self._merge(candidate, results, state, state.by_id[same_url], 1.0)
 
         match = await self._best_match(candidate, vector, results)
         if match is None:
+            _LOG.debug("_reconcile_one: no block match for %s -> inserting new", candidate.url)
             return await self._insert(candidate, vector, results, state, similarity=None)
         target, sim = match
         if sim >= self._auto_merge_threshold:
+            _LOG.debug(
+                "_reconcile_one: auto-merge %s into %s (sim=%.3f >= %.3f)",
+                candidate.url,
+                target.id,
+                sim,
+                self._auto_merge_threshold,
+            )
             return await self._merge(candidate, results, state, target, sim)
         if sim >= self._tiebreak_low_threshold:
             decision = DedupDecision.TIEBREAK
+            _LOG.debug(
+                "_reconcile_one: tiebreak band for %s vs %s (sim=%.3f); consulting judge",
+                candidate.url,
+                target.id,
+                sim,
+            )
             if await self._judge_same(candidate, target):
+                _LOG.debug(
+                    "_reconcile_one: judge: same -> merging %s into %s", candidate.url, target.id
+                )
                 return await self._merge(candidate, results, state, target, sim, decision)
+            _LOG.debug("_reconcile_one: judge: distinct -> inserting %s as new", candidate.url)
             return await self._insert(
                 candidate, vector, results, state, similarity=sim, decision=decision
             )
+        _LOG.debug(
+            "_reconcile_one: below tiebreak band for %s (sim=%.3f < %.3f) -> inserting new",
+            candidate.url,
+            sim,
+            self._tiebreak_low_threshold,
+        )
         return await self._insert(candidate, vector, results, state, similarity=sim)
 
     async def _best_match(
@@ -151,13 +190,27 @@ class ThresholdDeduper:
             limit=self._block_limit,
         )
         if not matches:
+            _LOG.debug(
+                "_best_match: block empty for %s (date±%dd, city=%s)",
+                candidate.url,
+                self._block_window_days,
+                candidate.geo.city,
+            )
             return None
+        _LOG.debug("_best_match: block has %d candidate(s) for %s", len(matches), candidate.url)
         signature = text_signature(doc_text(candidate))
         best: tuple[CanonicalSearchResult, float] | None = None
         for other, cosine in matches:
             sim = combined_similarity(cosine, jaccard(signature, text_signature(doc_text(other))))
             if best is None or sim > best[1]:
                 best = (other, sim)
+        if best is not None:
+            _LOG.debug(
+                "_best_match: best block match for %s is %s (sim=%.3f)",
+                candidate.url,
+                best[0].id,
+                best[1],
+            )
         return best
 
     async def _merge(

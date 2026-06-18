@@ -111,7 +111,7 @@ class FrontierWebSearch:
         return results
 
 
-class UnconfiguredWebSearch:
+class UnconfiguredWebSearch(WebSearchBackend):
     """Default backend: raises until a real one (extra `llm`) is wired."""
 
     async def find(self, query: str, *, max_results: int) -> list[ExtractedResult]:

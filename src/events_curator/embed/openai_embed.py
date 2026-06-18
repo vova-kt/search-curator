@@ -10,10 +10,11 @@ from collections.abc import Sequence
 
 from openai import AsyncOpenAI
 
+from events_curator.embed import Embedder
 from events_curator.models import Vector
 
 
-class OpenAIEmbedder:
+class OpenAIEmbedder(Embedder):
     def __init__(self, *, model: str, api_key: str = "", client: AsyncOpenAI | None = None) -> None:
         self._model = model
         self._client = client or AsyncOpenAI(api_key=api_key)
