@@ -50,6 +50,13 @@ can be committed even when the assistant isn't the one doing it. This needs to b
 switched on once per copy of the project with a single setup command (recorded in
 the project's setup notes); after that it's automatic.
 
+## A third safety net in CI
+
+The full gate also runs in GitHub Actions on every push to `master`
+(`.github/workflows/check.yml`): it installs with `uv sync` on Python 3.13 and
+runs `./check.sh`. This catches anything that reached the shared branch even if
+the local commit-time hook was bypassed.
+
 ## The automatic feedback loop
 
 When the assistant finishes a turn, a hook runs `check.sh --fast` on its own. If it
