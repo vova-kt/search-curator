@@ -3,9 +3,7 @@
 `WebSearchBackend` is the narrow port the engine drives — "find structured rows
 for one query". `FrontierWebSearch` is the engine: it turns those rows into
 ranked `RawSearchResult`s, canonicalizing each URL at ingestion (the point the
-corpus first sees it) so dedup downstream compares like with like. The default
-backend, `UnconfiguredWebSearch`, raises until the `llm` extra is wired — same
-shape as storage's optional SQLite adapter.
+corpus first sees it) so dedup downstream compares like with like.
 
 This module is dependency-free; the OpenAI-backed adapter lives in
 `openai_native.py` behind the module door's lazy re-export.
@@ -30,10 +28,6 @@ _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
 def canonicalize_url(url: str) -> str:
-    """Collapse cosmetic URL variants to one key: lowercase scheme/host, drop a
-    leading ``www.``, default ports, the fragment, and tracking params, and trim a
-    trailing slash. Non-http(s) or scheme-less inputs are returned stripped but
-    otherwise untouched (nothing safe to normalize); blank input returns ``""``."""
     url = url.strip()
     parts = urlsplit(url)
     scheme = parts.scheme.lower()
@@ -75,10 +69,9 @@ class ExtractedResult(BaseModel):
     attributes: dict[str, str] = Field(
         default_factory=dict[str, str],
         description=(
-            "Extra facts that matter for this kind of item but have no dedicated field, "
-            "as a flat map of string key to string value — e.g. authors and journal for a "
-            "paper, company and salary for a job, organizer for an event. Use lowercase "
-            "snake_case keys; omit anything you cannot find."
+            "Extra facts with no dedicated field, as a flat string→string map. The "
+            "allowed keys and how to fill each are the configured `[search].attributes` "
+            "vocabulary, injected into the submit-tool schema at call time."
         ),
     )
     price: str | None = Field(
@@ -88,19 +81,14 @@ class ExtractedResult(BaseModel):
 
 class ExtractedResults(BaseModel):
     """The batch a `WebSearchBackend` returns in one call. Its JSON schema defines
-    the `submit_results` function tool the model calls, so extraction reads typed
-    tool arguments instead of parsing free-form text."""
+    the `submit_results` function tool the model calls."""
 
     results: list[ExtractedResult] = Field(default_factory=list[ExtractedResult])
 
 
 class WebSearchTuning(BaseModel):
     """Provider-tuning for a native web-search call, resolved from `[search]` config
-    by the builder and handed to the backend: how hard the model thinks, how much
-    web context it pulls, and an optional domain allow-list. The geographic bias is
-    *not* here — it's a per-user attribute (`User.location`) passed per call.
-    Provider-agnostic in shape; the OpenAI backend maps it onto the Responses
-    `web_search` tool and `reasoning.effort`."""
+    by the builder and handed to the backend."""
 
     search_context_size: SearchContextSize
     reasoning_effort: ReasoningEffort
@@ -161,15 +149,3 @@ class FrontierWebSearch(SearchEngine):
             if len(results) >= self._max_results:
                 break
         return results
-
-
-class UnconfiguredWebSearch(WebSearchBackend):
-    """Default backend: raises until a real one (extra `llm`) is wired."""
-
-    async def find(
-        self, query: str, *, max_results: int, location: GeoBias
-    ) -> list[ExtractedResult]:
-        del query, max_results, location
-        raise NotImplementedError(
-            "No web-search backend; install the `llm` extra and wire OpenAIWebSearch."
-        )

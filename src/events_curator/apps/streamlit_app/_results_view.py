@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import streamlit as st
 
 from events_curator.apps.streamlit_app.console import (
@@ -8,6 +10,7 @@ from events_curator.apps.streamlit_app.console import (
     run_query,
 )
 from events_curator.auth import NotOwnerError
+from events_curator.config import get_config
 from events_curator.enums import FeedbackKind
 from events_curator.models import CanonicalSearchResult, Feedback, Principal, SavedQuery
 from events_curator.pipeline import UnknownSavedQueryError
@@ -47,15 +50,25 @@ def _feedback_section(query: SavedQuery, principal: Principal) -> None:
             _result_row(query, principal, result)
 
 
+def format_attributes(attributes: dict[str, str], emojis: Mapping[str, str]) -> str:
+    """Render a result's attributes for display, prefixing each with the emoji its
+    `[search].attributes` spec defines (keys outside the vocabulary render plain)."""
+    parts: list[str] = []
+    for key, value in attributes.items():
+        prefix = f"{emojis[key]} " if key in emojis else ""
+        parts.append(f"{prefix}**{key.replace('_', ' ').title()}:** {value}")
+    return "\n".join(parts)
+
+
 def _result_row(query: SavedQuery, principal: Principal, result: CanonicalSearchResult) -> None:
-    # One compact card per result: title/description on the left, the two feedback
-    # buttons packed together on the right — denser than stacking and full-width
-    # button columns.
     with st.container(border=True):
         info, actions = st.columns([6, 2], gap="xsmall", vertical_alignment="center")
         info.markdown(f"**[{result.title}]({result.url})**")
         if result.description:
             info.caption(result.description)
+        if result.attributes:
+            emojis = {key: spec.emoji for key, spec in get_config().search.attributes.items()}
+            info.caption(format_attributes(result.attributes, emojis))
         with actions.container(horizontal=True, horizontal_alignment="right", gap="xsmall"):
             if st.button("👍", key=f"like:{result.id}"):
                 _feedback_dialog(query, principal, result, FeedbackKind.LIKE)
@@ -67,9 +80,6 @@ def _result_row(query: SavedQuery, principal: Principal, result: CanonicalSearch
 def _feedback_dialog(
     query: SavedQuery, principal: Principal, result: CanonicalSearchResult, kind: FeedbackKind
 ) -> None:
-    # Opened by the Like/Dislike buttons so the optional comment is asked for only on
-    # demand, keeping the result rows uncluttered. On success we rerun to dismiss the
-    # modal; the toast survives the rerun and surfaces on the page behind it.
     st.markdown(f"[{result.title}]({result.url})")
     reason = st.text_area("Comment (optional)", key=f"reason:{result.id}")
     symbol = "👍" if kind == FeedbackKind.LIKE else "👎"

@@ -62,6 +62,17 @@ class EmbeddingSettings(BaseModel):
     dimensions: int
 
 
+class AttributeSpec(BaseModel):
+    """One allowed key in a result's free-form `attributes` map: a short instruction
+    telling the search model how to fill it, plus an emoji shown beside the value in
+    the UI. The set of specs is the per-deployment vocabulary — kept open-ended via
+    config rather than a code enum so a new domain needs no code change (CLAUDE.md
+    rule 4)."""
+
+    instruction: str  # how the search model should fill this key
+    emoji: str  # shown beside the value when rendering the attribute
+
+
 class SearchSettings(BaseModel):
     engine: SearchEngineKind
     max_results_per_query: int
@@ -71,6 +82,7 @@ class SearchSettings(BaseModel):
     allowed_domains: list[str]  # restrict web_search to these domains; empty = no restriction
     instructions: str  # system prompt steering the native web-search backend
     prompt: str  # per-query input prompt template; `{query}`/`{max_results}` placeholders
+    attributes: dict[str, AttributeSpec]  # allowed attribute keys → fill instruction + UI emoji
 
 
 class DedupSettings(BaseModel):

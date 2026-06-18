@@ -38,6 +38,14 @@ allowed_domains = []
 instructions = "test search instructions"
 prompt = "Find up to {max_results} results for: {query}"
 
+[search.attributes.organizer]
+instruction = "Who runs or hosts the item"
+emoji = "🏛️"
+
+[search.attributes.genre]
+instruction = "Style or category of the item"
+emoji = "🎵"
+
 [dedup]
 auto_merge_threshold = 0.88
 tiebreak_low_threshold = 0.75

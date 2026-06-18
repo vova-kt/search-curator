@@ -1,10 +1,8 @@
-"""The default wiring assembles a runnable pipeline; with no API key configured it
-flows through the real expand stage and FrontierWebSearch engine into the
-UnconfiguredWebSearch backend, which raises with a pointer to the `llm` extra to
-wire next. The config-driven factories pick each adapter (search backend/engine,
-LLM, embedder), the store, and the authenticator that every UI shares — selecting
-the real OpenAI adapter when a key + the `llm` extra are present, else the
-`Unconfigured*` placeholder.
+"""The config-driven factories pick each adapter (search backend/engine, LLM,
+embedder), the store, and the authenticator that every UI shares — selecting the
+real OpenAI adapter when a key + the `llm` extra are present, and otherwise failing
+fast at build time with `AdapterNotConfiguredError` so a misconfigured deployment stops
+at startup rather than part-way through a run.
 
 Config has no in-code defaults, so each test starts from the complete
 `config.test.toml` baseline (pinned by conftest) and overrides one field at a time
@@ -16,11 +14,9 @@ import pytest
 
 from events_curator.auth import LocalAuthenticator, TelegramAuthenticator
 from events_curator.config import get_config
-from events_curator.embed import UnconfiguredEmbedder
 from events_curator.enums import AuthScheme
-from events_curator.llm import UnconfiguredLLM
-from events_curator.models import Principal, SavedQuery, UserId
 from events_curator.pipeline import (
+    AdapterNotConfiguredError,
     build_authenticator,
     build_default_pipeline,
     build_embedder,
@@ -29,19 +25,13 @@ from events_curator.pipeline import (
     build_search_engine,
     build_storage,
 )
-from events_curator.search import FrontierWebSearch, UnconfiguredWebSearch
+from events_curator.search import FrontierWebSearch
 from events_curator.storage import InMemoryStorage
 
 
-async def test_default_pipeline_reaches_search_stub() -> None:
-    storage = InMemoryStorage()
-    pipeline = build_default_pipeline(get_config(), storage)
-    query = SavedQuery(user_id=UserId("local"), text="jazz in berlin")
-    await storage.queries.upsert(query)
-    principal = Principal(user_id=UserId("local"), scheme=AuthScheme.LOCAL)
-
-    with pytest.raises(NotImplementedError):
-        await pipeline.run(query.id, principal)
+def test_default_pipeline_fails_fast_without_adapters() -> None:
+    with pytest.raises(AdapterNotConfiguredError):
+        build_default_pipeline(get_config())  # baseline has no key / extras
 
 
 def test_build_storage_in_memory_for_sentinel(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,13 +80,15 @@ def test_build_embedder_openai_with_key(monkeypatch: pytest.MonkeyPatch) -> None
     assert isinstance(build_embedder(get_config()), OpenAIEmbedder)
 
 
-def test_build_embedder_openai_unconfigured_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_embedder_openai_without_key_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EMBEDDING__KIND", "openai")  # baseline key is empty
-    assert isinstance(build_embedder(get_config()), UnconfiguredEmbedder)
+    with pytest.raises(AdapterNotConfiguredError):
+        build_embedder(get_config())
 
 
-def test_build_llm_unconfigured_without_key() -> None:
-    assert isinstance(build_llm(get_config()), UnconfiguredLLM)  # baseline key is empty
+def test_build_llm_without_key_fails() -> None:
+    with pytest.raises(AdapterNotConfiguredError):  # baseline key is empty
+        build_llm(get_config())
 
 
 def test_build_llm_openai_with_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -113,10 +105,9 @@ def test_build_llm_anthropic_unwired(monkeypatch: pytest.MonkeyPatch) -> None:
         build_llm(get_config())
 
 
-def test_build_search_backend_unconfigured_without_key() -> None:
-    assert isinstance(
-        build_search_backend(get_config()), UnconfiguredWebSearch
-    )  # baseline empty key
+def test_build_search_backend_without_key_fails() -> None:
+    with pytest.raises(AdapterNotConfiguredError):  # baseline empty key
+        build_search_backend(get_config())
 
 
 def test_build_search_backend_openai_with_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,7 +118,9 @@ def test_build_search_backend_openai_with_key(monkeypatch: pytest.MonkeyPatch) -
     assert isinstance(build_search_backend(get_config()), OpenAIWebSearch)
 
 
-def test_build_search_engine_frontier_default() -> None:
+def test_build_search_engine_frontier_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("openai")  # the `llm` extra
+    monkeypatch.setenv("LLM__API_KEY", "sk-test")
     assert isinstance(build_search_engine(get_config()), FrontierWebSearch)
 
 

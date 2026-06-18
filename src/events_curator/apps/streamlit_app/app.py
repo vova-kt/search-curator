@@ -1,17 +1,6 @@
 """Streamlit operator console over the events DB — the package entrypoint.
 
 Run with:  streamlit run src/events_curator/apps/streamlit_app/app.py
-Streamlit is a base dependency; a live pipeline run additionally needs the
-`store` extra (to persist) and the `llm`/`embed` extras (the real search / rank /
-feedback adapters). A left-hand menu (`st.navigation`) switches between three
-sections; only the selected one runs:
-
-- **Query results** (`_results_view.render_results`) — a local-only console that
-  lists the operator's saved queries, runs a chosen one through the real pipeline,
-  and records like/dislike feedback. It writes, so it goes through `build_storage`.
-- **New query** (`_query_view.render_new_query`) — the local-only create form.
-- **Database** (`_db.render_db_view`) — a read-only window onto the SQLite file
-  (opens it `mode=ro`), for inspecting what the scheduler wrote. It never writes.
 
 The two console sections refuse to load under any non-LOCAL `AuthScheme`: this is
 a single-operator tool. They still mint a `Principal` through the `auth` module so

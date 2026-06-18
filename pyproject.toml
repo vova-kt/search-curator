@@ -7,6 +7,7 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "streamlit>=1.58.0",
+    "torchvision>=0.27.1",
     "openai>=1.40",
     "sentence-transformers>=3.0",
     "sqlite-vec>=0.1.1",

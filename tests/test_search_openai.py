@@ -36,8 +36,13 @@ def _backend(client: AsyncOpenAI, tuning: WebSearchTuning | None = None) -> Open
         instructions="find stuff",
         prompt="Find up to {max_results} results for: {query}",
         tuning=tuning or _tuning(),
+        attribute_instructions={"organizer": "who runs it"},
         client=client,
     )
+
+
+def _submit_tool(tools: list[dict[str, Any]]) -> dict[str, Any]:
+    return next(t for t in tools if t.get("name") == SUBMIT_TOOL_NAME)
 
 
 def _web_search(tools: list[dict[str, Any]]) -> dict[str, Any]:
@@ -74,7 +79,10 @@ async def test_find_offers_both_tools_and_parses_submit_call(
     assert captured["reasoning"]["effort"] == "low"
     web_search = _web_search(captured["tools"])
     assert web_search["search_context_size"] == "high"
-    assert any(t.get("name") == SUBMIT_TOOL_NAME for t in captured["tools"])
+    submit = _submit_tool(captured["tools"])
+    attributes = submit["parameters"]["$defs"]["ExtractedResult"]["properties"]["attributes"]
+    assert set(attributes["properties"]) == {"organizer"}  # the configured vocabulary
+    assert attributes["additionalProperties"] is False
 
 
 async def test_find_includes_location_and_domain_filters(monkeypatch: pytest.MonkeyPatch) -> None:

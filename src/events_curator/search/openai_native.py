@@ -11,6 +11,7 @@ door's lazy re-export, so the base `search` import never needs the extra — and
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import cast
 
 from openai import AsyncOpenAI
@@ -44,6 +45,7 @@ class OpenAIWebSearch(WebSearchBackend):
         instructions: str,
         prompt: str,
         tuning: WebSearchTuning,
+        attribute_instructions: Mapping[str, str],
         api_key: str = "",
         client: AsyncOpenAI | None = None,
     ) -> None:
@@ -51,6 +53,7 @@ class OpenAIWebSearch(WebSearchBackend):
         self._instructions = instructions
         self._prompt = prompt
         self._tuning = tuning
+        self._attribute_instructions = attribute_instructions
         self._client = client or AsyncOpenAI(api_key=api_key)
 
     async def find(
@@ -60,7 +63,10 @@ class OpenAIWebSearch(WebSearchBackend):
             model=self._model,
             instructions=self._instructions,
             input=build_search_prompt(self._prompt, query, max_results=max_results),
-            tools=[self._web_search_tool(location), cast("FunctionToolParam", submit_tool())],
+            tools=[
+                self._web_search_tool(location),
+                cast("FunctionToolParam", submit_tool(self._attribute_instructions)),
+            ],
             reasoning=Reasoning(effort=self._tuning.reasoning_effort.value),
         )
         for item in response.output:

@@ -1,182 +1,127 @@
 # Pipeline
 
 The six stages and the feedback path. Each is a `Protocol` in its own module; the
-orchestrator (`pipeline/orchestrator.py`) only knows the protocols. What follows
-is *why* each stage looks the way it does and what's real vs. stubbed today.
-
-The orchestrator logs each stage under a per-stage logger
-(`events_curator.stage.<name>`), milestones at `INFO` and detail at `DEBUG`, so
-verbosity is tunable one stage at a time — see [deployment.md](deployment.md#logging).
-
-## Observability — the progress stream
-
-Logs answer *what happened* after the fact; a person watching a live run needs to
-know *what it's waiting on right now*. A run can be slow (web search reads full
-pages, dedup and rank may call an LLM), so `run()` takes an optional
-`ProgressListener` (`pipeline/progress.py`) and notifies it as each stage advances.
-The same milestones the per-stage loggers record are fanned out to the listener, so
-the trace an operator sees and the trace the logs keep never drift apart — they're
-emitted from one place (`_Reporter` in the orchestrator).
-
-Each `ProgressEvent` carries the `Stage`, a `ProgressPhase`, and a ready-to-show
-`detail` line. A `START` is emitted *before* a slow await so the UI can say
-"Searching the web…" while it blocks; a `DONE` reports the result ("Fused into 12
-candidates"). The listener is called synchronously on the run's own task in stage
-order, so an implementation must stay cheap and non-blocking — no network, no
-`await`. A run with no listener (scheduler, eval) skips emission entirely; the
-listener is purely additive and never changes what a run computes.
-
-The Streamlit console is the reference consumer: it wraps a run in an `st.status`
-panel whose label tracks the running stage and whose body logs each event, so the
-operator sees the pipeline move instead of a bare spinner.
+orchestrator (`pipeline/orchestrator.py`) knows only the protocols. This page is
+*why* each stage looks the way it does. How adapters are chosen and what runs today
+is one shared pattern —
+[architecture.md](architecture.md#adapters-and-extras). How to watch a
+run is in [observability.md](observability.md).
 
 ## expand — `expand/`
 
 Turn one saved query into the concrete web queries to run. The variant that makes
 ChatGPT/Claude-style search feel good is **multi-query fan-out**: one LLM call
-explodes the user's intent into several complementary sub-queries (synonyms,
-neighbourhoods, date phrasings), which are then searched in parallel and fused.
-
-Shipped today: `IdentityExpander`, a real (non-stub) singleton — it returns the
-user's text unchanged. It's enough to exercise the whole pipeline; replace it
-with the LLM fan-out when wiring the `llm` extra.
+explodes the intent into complementary sub-queries (synonyms, neighbourhoods, date
+phrasings), searched in parallel and fused. Today `IdentityExpander` returns the
+user's text unchanged — enough to exercise the pipeline; the LLM fan-out replaces
+it.
 
 ## search — `search/`
 
-Run one expanded query against the web and extract candidate results. We tried
-keyword/SERP APIs (Tavily, Brave) and found recall and extraction quality too
-low. The chosen direction (**Variant A**) is a **frontier model's native
-web-search tool**: it fans out, reads full pages, and returns structured results
-in one call — much closer to what makes the ChatGPT/Claude apps good, without
-building a full deep-research agent. Other engines (Exa, Linkup, Perplexity,
-Serper — see `SearchEngineKind`) remain as alternative adapters behind the same
-protocol.
+Run one expanded query against the web and extract candidate results. The approach
+is a **frontier model's native web-search tool**: it fans out, reads full pages,
+and returns structured results in one call — close to what makes the ChatGPT/Claude
+apps good, without a full deep-research agent. Other engines (Exa, Linkup,
+Perplexity, Serper — see `SearchEngineKind`) remain alternative adapters behind the
+same protocol.
 
-Concurrency: the orchestrator dispatches every expanded query's search at once
-(`asyncio.gather`) — this is project rule 5, and it's why an engine implements a
-*single* query while the fan-out lives above it.
+The orchestrator dispatches every expanded query's search at once (`asyncio.gather`,
+rule 5), so an engine implements a *single* query while the fan-out lives above it.
 
-The engine (`FrontierWebSearch`) is real and split from the network: it drives a
-narrow `WebSearchBackend` port ("find structured rows for one query") and turns
-those rows into ranked `RawSearchResult`s. URLs are **canonicalized here**, at
-ingestion — the point the corpus first sees an item — so cosmetic variants
-(`www.`, tracking params, fragments, trailing slashes) collapse to one key and
-dedup downstream compares like with like. The backend is a *dedicated* port, not
-the shared `llm` module's `LLMClient`: native web search drives the provider's
-built-in web-search tool through multi-step research, a different capability than
-the chat client's text `complete()` and single-tool `submit()`, and keeping it
-separate stops that contract from leaking into dedup, rank, and feedback.
+`FrontierWebSearch` drives a narrow `WebSearchBackend` port ("find structured rows
+for one query") and turns those rows into ranked `RawSearchResult`s. That port is
+deliberately separate from the shared `llm` module's `LLMClient`: native web search
+drives the provider's built-in web-search tool through multi-step research, a
+different capability than the chat client's `complete()` / `submit()`, and keeping
+it separate stops that contract leaking into dedup, rank, and feedback.
 
-Shipped today: the engine plus `OpenAIWebSearch`, the concrete backend over
-OpenAI's Responses web-search tool (extra `llm`, re-exported lazily from the
-module door — same pattern as `SqliteStorage`). The builder's `build_search_backend`
-picks `OpenAIWebSearch` when an API key is set and the `llm` extra is installed, and
-`UnconfiguredWebSearch` — which raises a pointer to the extra — otherwise; so a
-default, keyless run still reaches the placeholder and stops there.
+URLs are **canonicalized here, at ingestion** — the point the corpus first sees an
+item — so cosmetic variants (`www.`, tracking params, fragments, trailing slashes)
+collapse to one key and dedup downstream compares like with like.
 
 Extraction is **tool-shaped, not text-parsed**: the backend offers the model a
-`submit_results` function tool whose JSON schema is generated from `ExtractedResult`,
-and reads the typed arguments of that tool call rather than parsing a free-form
-reply — the row shape stays single-sourced in the Pydantic model. Both prompts are
-config, not code — the system `[search].instructions` and the per-query input
-`[search].prompt` (a template filled with the query and result budget) — so a
-deployment can retune either without a release. The prompt/tool/parse contract lives
-in `search/_extract.py`, kept dependency-free so it is unit-tested without the network.
+`submit_results` function tool whose JSON schema is generated from `ExtractedResult`
+and reads the typed arguments, so the row shape stays single-sourced in the Pydantic
+model (the submit-tool pattern — see `llm/__init__.py`). The prompt/tool/parse
+contract lives in `search/_extract.py`, dependency-free so it unit-tests without the
+network. Both prompts are config: the system `[search].instructions` and the
+per-query `[search].prompt` template.
 
-The row shape is **domain-agnostic on purpose**: beyond the typed fields it carries
-a free-form `attributes` map (`dict[str, str]`) for facts that matter to one kind of
-target but have no dedicated column — authors/journal for a paper, company/salary
-for a job, organizer for an event. The build prompt teaches the model how to fill it
-(lowercase snake_case keys, omit what it can't find), so adding a new search domain
-needs no schema change. This is the open-ended escape hatch noted under rule 4.
+The row shape is **domain-agnostic on purpose**: beyond typed fields it carries a
+free-form `attributes` map (`dict[str, str]`) for facts with no dedicated column —
+authors/journal for a paper, company/salary for a job, organizer for an event. But
+the *allowed keys* are a closed, configured vocabulary, not whatever the model feels
+like inventing: `[search].attributes` maps each key to a fill instruction and a UI
+emoji, and `submit_tool` narrows the generated schema's open `attributes` object to
+exactly those keys (each described by its instruction, `additionalProperties: false`).
+Swapping the config — not the code — retargets the pipeline at a new domain. This is
+the per-deployment escape hatch of rule 4.
 
-The model's search behaviour is tuned from config, not hard-coded: `WebSearchTuning`
-(built in the search layer, bridged from `[search]` by the builder) maps onto the
-Responses `web_search` tool — `search_context_size` and a domain allow-list — plus
-`reasoning.effort`, whose values track the OpenAI `ReasoningEffort` levels. The
-geographic bias is deliberately *not* config: the DB is multi-user, and where
-someone searches from is theirs, not the deployment's — so it lives on the user
-(`User.location`, a `GeoBias`). Each run resolves the requesting principal's
-location and threads it into the search call (an absent user row means no bias).
-Empty knobs are omitted from the request rather than sent blank, so a minimal
-config asks for the tool's own defaults.
+Search behaviour is tuned from config: `WebSearchTuning` maps onto the Responses
+`web_search` tool (`search_context_size`, a domain allow-list) plus
+`reasoning.effort` (OpenAI's `ReasoningEffort` levels); empty knobs are omitted so a
+minimal config asks for the tool's defaults. Geographic bias lives on the user 
+(`User.location`, a `GeoBias`) and each run
+threads the requesting principal's location into the search call (no user row → no
+bias).
 
 ## merge — `merge/`
 
-Fuse the per-query result lists into one ranking with **Reciprocal Rank Fusion**.
-RRF is parameter-light, needs no score calibration across engines, and is robust
-to one list being noisy — the standard choice for combining fan-out results. The
-stage is pure (no I/O), so it's a real implementation, not a stub. Concept:
+Fuse the per-query result lists into one ranking with **Reciprocal Rank Fusion**:
+parameter-light, no cross-engine score calibration, robust to one noisy list — the
+standard choice for fan-out. Pure (no I/O). Concept:
 [concepts/reciprocal-rank-fusion.md](concepts/reciprocal-rank-fusion.md).
 
 ## dedup — `dedup/`
 
-Reconcile fresh candidates against the stored corpus, both within this run and
-across past sessions — the same real-world item resurfaces with different URLs,
-titles, and wording every time the query runs. The design is classic **entity
-resolution**: canonicalize the URL, *block* on date(±N days)+city to avoid
-comparing everything to everything, then score similarity (MinHash on text +
-embedding cosine). Above `auto_merge_threshold` → merge; in the tiebreak band →
-ask an LLM judge; below → insert as new. Merged records build a **golden record**
-by survivorship and keep provenance. Concept:
+Reconcile fresh candidates against the stored corpus, within this run and across
+past sessions — the same real-world item resurfaces with different URLs, titles, and
+wording each run. The design is classic **entity resolution**: canonicalize the
+URL, *block* on date(±N days)+city to avoid comparing everything to everything, then
+score similarity (MinHash on text + embedding cosine). Above `auto_merge_threshold`
+→ merge; in the tiebreak band → ask an LLM judge; below → insert as new. Concept:
 [concepts/entity-resolution.md](concepts/entity-resolution.md).
 
-Two design choices worth their *why*:
+Choices worth their *why*:
 
-- **The two signals fuse by taking the stronger of them** (`max`, in
-  `dedup/_match.py`): either strong wording overlap *or* strong semantic closeness
-  flags a likely duplicate. That favours recall; the tiebreak-band LLM judge is the
-  guard that stops a high-lexical-but-unrelated pair from auto-merging. A wrong
-  merge corrupts the golden record, so the judge's verdict is parsed
-  conservatively — anything but a clear "yes" inserts new (a missed merge is
-  recovered next run).
+- **The two signals fuse by the stronger of them** (`max`, `dedup/_match.py`):
+  strong wording overlap *or* strong semantic closeness flags a likely duplicate.
+  That favours recall; the tiebreak-band judge guards against a
+  high-lexical-but-unrelated pair auto-merging. A wrong merge corrupts the golden
+  record, so the judge is parsed conservatively — anything but a clear "yes" inserts
+  new (a missed merge is recovered next run).
 - **Within-run dedup rides the same path as cross-session.** Each new/updated
-  canonical is upserted *as it is decided*, so a later candidate's `nearest`
-  already sees it — no separate intra-batch pass. An exact-URL index
-  short-circuits the common case of two candidates sharing one canonical URL.
+  canonical is upserted as it's decided, so a later candidate's `nearest` already
+  sees it — no separate intra-batch pass. An exact-URL index short-circuits two
+  candidates sharing one canonical URL.
+- **Survivorship is first-non-empty-wins** (plus a key-wise `attributes` merge): the
+  canonical keeps a field once any source fills it, later sightings only fill gaps,
+  and provenance records the raw source that won each field. No per-source trust
+  scores yet, so "earliest complete sighting holds the field" is the order we can
+  defend.
 
-Survivorship is **first-non-empty-wins** (plus a key-wise `attributes` merge): the
-canonical keeps a field once any source fills it, later sightings only fill gaps,
-and provenance records the raw source that won each field. The open-ended
-`attributes` map folds at the sub-key level — an existing key is kept, a later
-sighting only contributes keys not already present — mirroring scalar survivorship.
-(No per-source trust scores yet, so "earliest complete sighting holds the field" is
-the order we can defend.)
-
-The cross-session lookup is the store's `nearest` (date+city window), so dedup
-depends only on the `SearchResultStore` read side. Thresholds live in `config.py`, not
-as literals, so eval can sweep them. The judge's model, temperature, and system
-prompt are the `dedup_judge` LLM role, defined under `[llm.roles.dedup_judge]` in
-config and passed in per `complete()` call, so the deduper holds no model state of
-its own — see [deployment.md](deployment.md#configuration).
-
-Shipped today: `ThresholdDeduper` is real — blocking + two-threshold similarity +
-the survivorship/provenance logic all run without any extra. It drives an
-`Embedder` (semantic signal) and an `LLMClient` (the judge) that the builder picks
-via `build_embedder` / `build_llm`: the judge is `OpenAIChat` once a key + the `llm`
-extra are present, and the embedder defaults to the local bge-small `BgeEmbedder`
-(extra `embed`) with `OpenAIEmbedder` as the API alternative — falling back to an
-Unconfigured placeholder only when the chosen backend isn't installed/keyed. The
-prompt/parse and matching contracts live in
+Dedup depends only on the read side (`SearchResultStore.nearest`, which applies the
+date+city block). Thresholds live in `config.py` so eval can sweep them; the judge
+is the `dedup_judge` LLM role. The prompt/parse and matching contracts live in
 dependency-free helpers (`dedup/_judge.py`, `dedup/_match.py`, `dedup/_golden.py`),
 unit-tested without the network.
 
 ## store — `storage/`
 
-Persist raw candidates, the golden canonical results, provenance, and the
-per-query result links. Covered in [storage.md](storage.md).
+Persist raw candidates, golden canonical results, provenance, and per-query result
+links. See [storage.md](storage.md).
 
 ## rank — `rank/`
 
-Order the canonical results for one saved query given its preference profile.
-Covered in [preferences.md](preferences.md).
+Order the canonical results for one saved query given its preference profile. See
+[preferences.md](preferences.md).
 
 ## feedback — `feedback/`
 
 Fold a like/dislike (with optional reason) into the saved query's preference
-profile. Also covered in [preferences.md](preferences.md).
+profile. See [preferences.md](preferences.md).
 
-## Eval
+## eval
 
-Any stage — or the whole pipeline — can be scored offline against golden
-fixtures through one harness. See [eval.md](eval.md).
+Any stage — or the whole pipeline — can be scored offline against golden fixtures.
+See [eval.md](eval.md).

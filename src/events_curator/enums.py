@@ -122,3 +122,4 @@ class NoisyLogger(StrEnum):
     FSEVENTS = "fsevents"
     HTTPCORE_CONNECTION = "httpcore.connection"
     HTTPCORE_HTTP11 = "httpcore.http11"
+    OPENAI_BASE_CLIENT = "openai._base_client"

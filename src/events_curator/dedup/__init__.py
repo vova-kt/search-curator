@@ -1,18 +1,7 @@
 """Dedup stage: reconcile fresh candidates against the stored corpus, both within
 this run and across past sessions.
 
-Entity resolution in three parts (concept: ``docs/concepts/entity-resolution.md``):
-canonicalize the URL (done upstream at ingestion), *block* on date(±N days)+city to
-avoid all-pairs comparison, then score similarity — MinHash on text fused with
-embedding cosine (``_match.py``). Above ``auto_merge_threshold`` → merge; in the
-tiebreak band → an LLM judge decides (``_judge.py``); below → insert new. Merges
-build a golden record by survivorship and keep provenance (``_golden.py``).
-
-The cross-session lookup is the store's ``nearest`` (date+city window), so dedup
-depends only on the ``SearchResultStore`` read side. Within-run dedup falls out of
-the same path: each new/updated canonical is upserted immediately, so a later
-candidate's ``nearest`` already sees it; an exact-URL index short-circuits the
-common case where two candidates share one canonical URL.
+Entity resolution in three parts (concept: ``docs/concepts/entity-resolution.md``)
 """
 
 from __future__ import annotations
@@ -38,8 +27,6 @@ from events_curator.models import (
 )
 from events_curator.storage import SearchResultStore
 
-# Per-stage logger (`events_curator.stage.dedup`); the orchestrator owns the INFO
-# milestones, so the per-candidate decision trace here lives at DEBUG.
 _LOG = logging.getLogger(f"events_curator.stage.{Stage.DEDUP.value}")
 
 
@@ -79,9 +66,7 @@ class _RunState:
 
 class ThresholdDeduper(Deduper):
     """Blocking + two-threshold similarity with an LLM tiebreak judge. Drives an
-    `Embedder` (semantic signal) and an `LLMClient` (the judge); both default to
-    the Unconfigured placeholders, so a run raises with a pointer to the extra to
-    wire until real ones are swapped in (same shape as the search backend)."""
+    `Embedder` (semantic signal) and an `LLMClient` (the judge);"""
 
     def __init__(
         self,

@@ -1,14 +1,7 @@
 """Embedding port. Used by dedup (semantic similarity) and rank/feedback (taste
 vectors).
 
-`Embedder` (the protocol) and `UnconfiguredEmbedder` (the default placeholder) are
-the dependency-free core. The concrete adapters are re-exported lazily so importing
-this door never pulls in an optional extra: `BgeEmbedder` (a local
-`SentenceTransformer`, extra `embed`, the CPU-friendly bge-small default) and
-`OpenAIEmbedder` (the embeddings API, extra `llm`). Same lazy-door pattern as
-`llm.OpenAIChat` / `storage.SqliteStorage` — `from events_curator.embed import
-BgeEmbedder` loads it on demand and raises a clear ImportError if the extra is
-missing."""
+`Embedder` (the protocol) is the dependency-free core."""
 
 from __future__ import annotations
 
@@ -26,16 +19,7 @@ class Embedder(Protocol):
     async def embed(self, texts: Sequence[str]) -> list[Vector]: ...
 
 
-class UnconfiguredEmbedder(Embedder):
-    """Default placeholder. Swap in `BgeEmbedder` (extra `embed`) or `OpenAIEmbedder`
-    (extra `llm`)."""
-
-    async def embed(self, texts: Sequence[str]) -> list[Vector]:
-        del texts
-        raise NotImplementedError("No embedder configured; install the `embed` extra and wire one.")
-
-
-__all__ = ["BgeEmbedder", "Embedder", "OpenAIEmbedder", "UnconfiguredEmbedder"]
+__all__ = ["BgeEmbedder", "Embedder", "OpenAIEmbedder"]
 
 
 def __getattr__(name: str) -> object:

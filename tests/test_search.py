@@ -1,12 +1,8 @@
-"""FrontierWebSearch and the dependency-free extraction helpers (no `llm` extra):
-the engine shapes a backend's rows into ranked RawSearchResults, canonicalizing
-URLs at ingestion; the `submit_results` tool schema is derived from ExtractedResult
-and parse_submission reads its call arguments tolerantly."""
-
 from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from typing import Any, cast
 
 import pytest
 
@@ -15,7 +11,6 @@ from events_curator.models import ExpandedQuery, GeoBias, new_saved_query_id
 from events_curator.search import (
     ExtractedResult,
     FrontierWebSearch,
-    UnconfiguredWebSearch,
     canonicalize_url,
 )
 from events_curator.search._extract import (
@@ -24,7 +19,6 @@ from events_curator.search._extract import (
     parse_submission,
     submit_tool,
 )
-from events_curator.search.frontier import ExtractedResults
 
 
 class _Backend:
@@ -98,11 +92,6 @@ async def test_engine_truncates_to_max_results() -> None:
     assert backend.calls == [("jazz in berlin", 2)]
 
 
-async def test_unconfigured_backend_raises() -> None:
-    with pytest.raises(NotImplementedError):
-        await UnconfiguredWebSearch().find("q", max_results=5, location=GeoBias())
-
-
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
@@ -122,17 +111,28 @@ def test_canonicalize_url(raw: str, expected: str) -> None:
 
 
 def test_submit_tool_schema_is_derived_from_extracted_result() -> None:
-    parameters = ExtractedResults.model_json_schema()
-    tool = submit_tool()
+    tool = submit_tool({"organizer": "who runs it"})
+    parameters = cast("dict[str, Any]", tool["parameters"])
     assert tool["type"] == "function"
     assert tool["name"] == SUBMIT_TOOL_NAME
-    assert tool["parameters"] == parameters
     assert "results" in parameters["properties"]
     # The row shape is single-sourced from ExtractedResult, referenced via $defs.
     row_props = parameters["$defs"]["ExtractedResult"]["properties"]
     assert "attributes" in row_props
     assert "image_url" in row_props
-    assert "tags" not in row_props  # dropped in favor of the open-ended attributes map
+    assert "tags" not in row_props  # dropped in favor of the configured attributes map
+
+
+def test_submit_tool_narrows_attributes_to_configured_vocabulary() -> None:
+    tool = submit_tool({"organizer": "who runs it", "genre": "music style"})
+    parameters = cast("dict[str, Any]", tool["parameters"])
+    attributes = parameters["$defs"]["ExtractedResult"]["properties"]["attributes"]
+    # Only the configured keys are offered, each described by its instruction, and the
+    # model may not invent others (the open string→string map is gone).
+    assert attributes["additionalProperties"] is False
+    assert set(attributes["properties"]) == {"organizer", "genre"}
+    assert attributes["properties"]["organizer"]["description"] == "who runs it"
+    assert attributes["properties"]["genre"]["type"] == "string"
 
 
 def test_parse_submission_reads_results_array() -> None:

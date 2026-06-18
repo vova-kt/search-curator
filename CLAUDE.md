@@ -1,6 +1,6 @@
 # events-curator — Claude working notes
 
-AI-curated recurring web searches: a saved query re-runs on a schedule, reconciles results against everything seen before, and ranks what's left by learned taste. Upcoming events are the flagship example, but the pipeline is domain-agnostic — the same machinery curates papers, jobs, or listings. Pluggable search engines, LLMs, storage, and ranking strategies. 
+AI-curated recurring web searches: a saved query re-runs on a schedule, reconciles results against everything seen before, and ranks what's left by learned taste. Upcoming events are the flagship example, but the pipeline is domain-agnostic — the same machinery curates papers, jobs, or listings. Pluggable search engines, LLMs, storage, and ranking strategies.
 
 > **Status: active pre-`1.0` development.** Nothing is stable. Schemas, public APIs, config shapes, prompt contracts, and strategy interfaces all change without notice. There is no migration system for storage — when the schema changes, reset local databases. Don't add migrations, deprecation shims, or "legacy" branches.
 
@@ -11,7 +11,7 @@ These are project rules. Follow them on every change.
 1. **Update docs and `CLAUDE.md` in the same change.** Whenever behavior, architecture, public API, config, prompts, or strategies change, update the relevant `docs/*.md` page and this file together. Stale docs actively mislead. If you're not updating docs, you're not done.
 2. **Bug fixes target the root cause.** Do not patch symptoms, swallow errors, or special-case the failing input. Trace the failure to the underlying cause and fix it there. If the root cause is out of scope, say so explicitly and stop — don't ship a workaround silently.
 3. **No backward compatibility while in development.** The lib is pre-`1.0`. Rename, restructure, drop fields, change return shapes whenever it makes the design better. Don't add deprecation shims, "legacy" branches, aliases, or migrations. Just change it and update the docs.
-4. **Use enums, not raw string/number constants, for closed sets of values.** Any value drawn from a fixed set that's used in more than one place — stage names, phase names, status codes, kinds, modes — must be defined as a enum in a dedicated module and imported. Do not hard-code the underlying literals at call sites; the enum is the single source of truth for the runtime values. (Result `attributes` are the deliberate exception: a recurring search can target any domain, so per-result facts are open-ended and modelled as a free-form `dict[str, str]`, not an enum.) 
+4. **Use enums, not raw string/number constants, for closed sets of values.** Any value drawn from a fixed set that's used in more than one place — stage names, phase names, status codes, kinds, modes — must be defined as a enum in a dedicated module and imported. Do not hard-code the underlying literals at call sites; the enum is the single source of truth for the runtime values. (Result `attributes` are the deliberate exception: a recurring search can target any domain, so per-result facts stay a free-form `dict[str, str]`, not an enum. Their *allowed keys* are a closed set, but a per-deployment one defined in `[search].attributes` config — each key carries a fill instruction and a UI emoji — not a code enum, so a new domain needs no code change.)
 5. **Multiple web/LLM requests run concurrently.** When a stage, strategy, or adapter issues more than one network or LLM call whose inputs are known up front, dispatch them in parallel.
 6. **Docs never duplicate code.** No type defs, no schema column tables, no contract signatures, no key-binding tables, no copies of prompts or `DEFAULTS` in `docs/`. A one-line prose summary plus a link to the source file is the right shape. Pseudocode is acceptable only for genuinely complex algorithms where prose alone is hard to follow. Anything else: link to the code. Duplicates rot the moment the code changes.
 7. **Human docs are concise and consolidated.** One page per topic, not a folder of three. Each page should be readable end-to-end in a few minutes.
@@ -27,14 +27,15 @@ These rules echo [Anthropic's CLAUDE.md guidance](https://code.claude.com/docs/e
 
 The `docs/` directory is the canonical reference. Read the page that matches your task before editing code.
 
-- [architecture.md](docs/architecture.md) — the big picture: UI-agnostic pipeline, module layering, the two load-bearing decisions (per-query preferences, multi-user DB).
-- [pipeline.md](docs/pipeline.md) — the six stages + feedback, per-stage design and what's real vs. stubbed.
+- [architecture.md](docs/architecture.md) — the big picture: UI-agnostic pipeline, module layering, the adapter/extras pattern, the two load-bearing decisions.
+- [pipeline.md](docs/pipeline.md) — the six stages + feedback: per-stage design and rationale.
 - [storage.md](docs/storage.md) — why SQLite + sqlite-vec, golden records/provenance, the in-memory default.
-- [preferences.md](docs/preferences.md) — per-saved-query taste centroids + NL summary, ranking, exploration/blender.
+- [preferences.md](docs/preferences.md) — per-saved-query taste centroids + NL summary, ranking, exploration.
 - [auth.md](docs/auth.md) — identity-only multi-user auth and ownership enforcement.
 - [eval.md](docs/eval.md) — the PredictFn-based offline scoring harness.
-- [deployment.md](docs/deployment.md) — Docker compose (scheduler + Streamlit view), env config.
-- [logging.md](docs/logging.md) — the two logging entry points (`setup_logging` vs `sitecustomize.py` + `logging.ini`), per-stage tuning.
+- [configuration.md](docs/configuration.md) — file-first config, no in-code defaults, the LLM roles.
+- [deployment.md](docs/deployment.md) — Docker compose (scheduler + Streamlit view), the image, resetting.
+- [observability.md](docs/observability.md) — watching a run: the live progress stream and the logging stack.
 - [guardrails.md](docs/guardrails.md) — how the `check.sh` gate enforces the mechanical rules.
 - [concepts/](docs/concepts/) — one-page explainers: RRF, taste vectors, entity resolution.
 

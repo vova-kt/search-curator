@@ -32,26 +32,7 @@ class LLMClient(Protocol):
         ...
 
 
-class UnconfiguredLLM(LLMClient):
-    async def complete(
-        self, messages: Sequence[ChatMessage], *, model: str, temperature: float = 0.0
-    ) -> str:
-        del messages, model, temperature
-        raise NotImplementedError("No LLM adapter; install the `llm` extra and wire one.")
-
-    async def submit(
-        self,
-        messages: Sequence[ChatMessage],
-        *,
-        tool: dict[str, object],
-        model: str,
-        temperature: float = 0.0,
-    ) -> str:
-        del messages, tool, model, temperature
-        raise NotImplementedError("No LLM adapter; install the `llm` extra and wire one.")
-
-
-__all__ = ["ChatMessage", "LLMClient", "OpenAIChat", "UnconfiguredLLM"]
+__all__ = ["ChatMessage", "LLMClient", "OpenAIChat"]
 
 
 def __getattr__(name: str) -> object:

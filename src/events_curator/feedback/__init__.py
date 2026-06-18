@@ -4,10 +4,7 @@ preference profile (design: ``docs/preferences.md``).
 `ProfileUpdater` appends the feedback, then updates both learned signals together:
 the natural-language summary (an LLM rewrite, ``_summary.py``) and the liked/
 disliked taste centroids (an exact incremental mean, ``_centroid.py``). Both are
-scoped to the saved query, so each recurring search learns its own taste. The
-item's vector is its stored canonical embedding when present, otherwise embedded on
-the fly; the embed and the summary LLM call are independent, so they're dispatched
-concurrently (rule 5).
+scoped to the saved query.
 """
 
 from __future__ import annotations
@@ -28,8 +25,6 @@ from events_curator.models import (
 )
 from events_curator.storage import FeedbackStore, PreferenceStore, SearchResultStore
 
-# Feedback runs outside a curation run, so it isn't a `Stage` enum member; it still
-# follows the `events_curator.stage.<name>` logger convention for per-stage tuning.
 _LOG = logging.getLogger("events_curator.stage.feedback")
 
 
@@ -49,9 +44,7 @@ class UnknownResultError(LookupError):
 
 
 class ProfileUpdater(PreferenceLearner):
-    """Updates the NL summary (LLM) and taste centroids (embedder) from one label.
-    Both adapters default to the Unconfigured placeholders in the builder, so a live
-    run raises with a pointer to the `embed`/`llm` extra until real ones are wired."""
+    """Updates the NL summary (LLM) and taste centroids (embedder) from one label."""
 
     def __init__(
         self,

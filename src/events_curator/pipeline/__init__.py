@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from events_curator.pipeline.builder import (
     IN_MEMORY_DB_PATH,
+    AdapterNotConfiguredError,
     build_authenticator,
     build_default_pipeline,
     build_default_stages,
@@ -22,6 +23,7 @@ from events_curator.pipeline.progress import ProgressEvent, ProgressListener
 
 __all__ = [
     "IN_MEMORY_DB_PATH",
+    "AdapterNotConfiguredError",
     "CurationPipeline",
     "ProgressEvent",
     "ProgressListener",

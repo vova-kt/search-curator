@@ -1,7 +1,5 @@
 """The Streamlit console's read-only **Database** section: a window onto the SQLite
-file the scheduler writes. It opens the DB `mode=ro` and never writes, so it stays
-independent of the auth/pipeline machinery the writable sections need. Imported by
-the package entrypoint (`app.py`) as one navigation page."""
+file the scheduler writes. It opens the DB `mode=ro` and never writes."""
 
 from __future__ import annotations
 
