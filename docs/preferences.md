@@ -49,7 +49,11 @@ vectors, but the rank stage only receives the centroid *profile*, not the feedba
 history — so threading those through (or storing fitted weights on the profile) is
 the prerequisite, and it's deferred until the taste+LLM signal proves insufficient.
 
-All thresholds live in `config.py`.
+All thresholds live in `config.py`. The reranker's model, temperature, and system
+prompt are the `rank_reranker` LLM role and the summary rewriter's are
+`feedback_summary` — each defined under `[llm.roles.<role>]` in config and passed
+in per `complete()` call, so neither stage carries model state. See
+[deployment.md](deployment.md#configuration).
 
 ## Learning from feedback
 

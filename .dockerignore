@@ -10,9 +10,8 @@ docs
 *.db-shm
 *.db-wal
 *.sqlite
-.env
-.env.*
-!.env.example
+config.toml
+!config.example.toml
 .DS_Store
 node_modules
 .idea

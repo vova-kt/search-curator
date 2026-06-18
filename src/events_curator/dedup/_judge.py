@@ -1,19 +1,14 @@
 """The tiebreak judge's prompt/parse contract, kept dependency-free (no LLM
 adapter) so it is unit-testable without the ``llm`` extra — mirrors
 ``search/_extract.py``. Only candidates whose similarity lands in the ambiguous
-band between the two thresholds ever reach the judge."""
+band between the two thresholds ever reach the judge. The system instruction is
+passed in (resolved from config per `LLMRole.DEDUP_JUDGE`); this module only
+assembles the two records into the user message."""
 
 from __future__ import annotations
 
 from events_curator.llm import ChatMessage
 from events_curator.models import CanonicalSearchResult, RawSearchResult
-
-_SYSTEM = (
-    "You are a deduplication judge for search results. Two records are shown. "
-    "Decide whether they describe the SAME real-world item (the same event, paper, "
-    "listing, etc.) even if their titles, wording, or URLs differ. "
-    "Reply with exactly 'yes' or 'no'."
-)
 
 
 def _render(label: str, record: RawSearchResult | CanonicalSearchResult) -> str:
@@ -30,11 +25,11 @@ def _render(label: str, record: RawSearchResult | CanonicalSearchResult) -> str:
 
 
 def build_judge_prompt(
-    candidate: RawSearchResult, other: CanonicalSearchResult
+    system: str, candidate: RawSearchResult, other: CanonicalSearchResult
 ) -> list[ChatMessage]:
     body = f"{_render('A', candidate)}\n\n{_render('B', other)}\n\nSame item?"
     return [
-        ChatMessage(role="system", content=_SYSTEM),
+        ChatMessage(role="system", content=system),
         ChatMessage(role="user", content=body),
     ]
 

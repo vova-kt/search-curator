@@ -40,8 +40,8 @@ class FakeSummarizer:
         self._reply = reply
         self.calls = 0
 
-    async def complete(self, messages: object, *, temperature: float = 0.0) -> str:
-        del messages, temperature
+    async def complete(self, messages: object, *, model: str, temperature: float = 0.0) -> str:
+        del messages, model, temperature
         self.calls += 1
         return self._reply
 
@@ -99,9 +99,10 @@ def test_fold_dislike_updates_disliked_side_only() -> None:
 def test_build_summary_prompt_carries_current_summary_reason_and_item() -> None:
     result = _result("Tribute Night").model_copy(update={"geo": Geo(city="Berlin")})
     feedback = _feedback(result.id, FeedbackKind.DISLIKE, reason="no tribute acts")
-    messages = build_summary_prompt("likes small venues", feedback, result)
+    messages = build_summary_prompt("be a summarizer", "likes small venues", feedback, result)
 
     assert [m.role for m in messages] == ["system", "user"]
+    assert messages[0].content == "be a summarizer"
     body = messages[1].content
     assert "likes small venues" in body
     assert "DISLIKED" in body
@@ -125,7 +126,9 @@ async def _store_with(result: CanonicalSearchResult) -> InMemoryStorage:
 async def _record(
     storage: InMemoryStorage, feedback: Feedback, embedder: FakeEmbedder, summarizer: FakeSummarizer
 ) -> PreferenceProfile:
-    return await ProfileUpdater(embedder, summarizer).record(
+    return await ProfileUpdater(
+        embedder, summarizer, system_prompt="summarize", model="test-model"
+    ).record(
         feedback,
         feedback_store=storage.feedback,
         preference_store=storage.preferences,

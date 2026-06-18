@@ -1,8 +1,9 @@
 """The preference reranker's prompt/parse contract, kept dependency-free (no LLM
 adapter) so it is unit-testable without the ``llm`` extra — mirrors
-``dedup/_judge.py``. The model is shown the search's natural-language taste summary
-and the prefiltered candidates (as 1-based indices), and asked to order them
-best-first with a short reason each.
+``dedup/_judge.py``. The system instruction is passed in (resolved from config per
+``LLMRole.RANK_RERANKER``); this module assembles the user message: the search's
+natural-language taste summary and the prefiltered candidates (as 1-based indices),
+asking the model to order them best-first with a short reason each.
 
 Candidates are addressed by small integer index rather than their uuid id: a model
 echoes a short ordinal far more reliably than a 32-char hex, and the index maps
@@ -19,14 +20,6 @@ from typing import cast
 from events_curator.llm import ChatMessage
 from events_curator.models import CanonicalSearchResult, SavedQuery
 
-_SYSTEM = (
-    "You are a personalization reranker for a recurring web search. You are given "
-    "the search's learned taste and a numbered list of candidate results. Order the "
-    "candidates from best to worst fit for that taste. Reply with ONLY a JSON object "
-    '{"ranking": [{"id": <candidate number>, "why": "<short reason>"}, ...]} — no '
-    "prose, no code fences. Include every candidate number exactly once, best first."
-)
-
 _FENCE = re.compile(r"\A```[a-zA-Z0-9]*\n(.*)\n```\Z", re.DOTALL)
 
 
@@ -41,7 +34,7 @@ def _render(index: int, result: CanonicalSearchResult) -> str:
 
 
 def build_rerank_prompt(
-    results: list[CanonicalSearchResult], *, summary: str, query: SavedQuery
+    system: str, results: list[CanonicalSearchResult], *, summary: str, query: SavedQuery
 ) -> list[ChatMessage]:
     catalog = "\n".join(_render(i + 1, r) for i, r in enumerate(results))
     taste = summary.strip() or "(no learned taste yet — fall back to relevance to the query)"
@@ -52,7 +45,7 @@ def build_rerank_prompt(
         "Return the ranking JSON."
     )
     return [
-        ChatMessage(role="system", content=_SYSTEM),
+        ChatMessage(role="system", content=system),
         ChatMessage(role="user", content=body),
     ]
 

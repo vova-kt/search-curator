@@ -4,23 +4,20 @@ UnconfiguredWebSearch backend, which raises with a pointer to the `llm` extra to
 wire next. The config-driven factories pick each adapter (search backend/engine,
 LLM, embedder), the store, and the authenticator that every UI shares — selecting
 the real OpenAI adapter when a key + the `llm` extra are present, else the
-`Unconfigured*` placeholder."""
+`Unconfigured*` placeholder.
+
+Config has no in-code defaults, so each test starts from the complete
+`config.test.toml` baseline (pinned by conftest) and overrides one field at a time
+through the env source — the same precedence Docker/CI uses in production."""
 
 from __future__ import annotations
 
 import pytest
 
 from events_curator.auth import LocalAuthenticator, TelegramAuthenticator
-from events_curator.config import (
-    AppConfig,
-    AuthSettings,
-    EmbeddingSettings,
-    LLMSettings,
-    SearchSettings,
-    StorageSettings,
-)
+from events_curator.config import get_config
 from events_curator.embed import UnconfiguredEmbedder
-from events_curator.enums import AuthScheme, EmbedderKind, LLMProvider, SearchEngineKind
+from events_curator.enums import AuthScheme
 from events_curator.llm import UnconfiguredLLM
 from events_curator.models import Principal, SavedQuery, UserId
 from events_curator.pipeline import (
@@ -38,7 +35,7 @@ from events_curator.storage import InMemoryStorage
 
 async def test_default_pipeline_reaches_search_stub() -> None:
     storage = InMemoryStorage()
-    pipeline = build_default_pipeline(AppConfig(), storage)
+    pipeline = build_default_pipeline(get_config(), storage)
     query = SavedQuery(user_id=UserId("local"), text="jazz in berlin")
     await storage.queries.upsert(query)
     principal = Principal(user_id=UserId("local"), scheme=AuthScheme.LOCAL)
@@ -47,95 +44,94 @@ async def test_default_pipeline_reaches_search_stub() -> None:
         await pipeline.run(query.id, principal)
 
 
-def test_build_storage_in_memory_for_sentinel() -> None:
-    config = AppConfig(storage=StorageSettings(db_path=":memory:"))
-    assert isinstance(build_storage(config), InMemoryStorage)
+def test_build_storage_in_memory_for_sentinel(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STORAGE__DB_PATH", ":memory:")
+    assert isinstance(build_storage(get_config()), InMemoryStorage)
 
 
-def test_build_storage_sqlite_for_path() -> None:
+def test_build_storage_sqlite_for_path(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("sqlite_vec")  # the `store` extra
     from events_curator.storage import SqliteStorage  # noqa: PLC0415
 
-    config = AppConfig(storage=StorageSettings(db_path="./events.db"))
-    assert isinstance(build_storage(config), SqliteStorage)
+    monkeypatch.setenv("STORAGE__DB_PATH", "./events.db")
+    assert isinstance(build_storage(get_config()), SqliteStorage)
 
 
-def test_build_authenticator_local() -> None:
-    config = AppConfig(auth=AuthSettings(scheme=AuthScheme.LOCAL))
-    assert isinstance(build_authenticator(config), LocalAuthenticator)
+def test_build_authenticator_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTH__SCHEME", AuthScheme.LOCAL.value)
+    assert isinstance(build_authenticator(get_config()), LocalAuthenticator)
 
 
-def test_build_authenticator_telegram() -> None:
-    config = AppConfig(auth=AuthSettings(scheme=AuthScheme.TELEGRAM))
-    assert isinstance(build_authenticator(config), TelegramAuthenticator)
+def test_build_authenticator_telegram(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTH__SCHEME", AuthScheme.TELEGRAM.value)
+    assert isinstance(build_authenticator(get_config()), TelegramAuthenticator)
 
 
-def test_build_authenticator_api_token_unwired() -> None:
-    config = AppConfig(auth=AuthSettings(scheme=AuthScheme.API_TOKEN))
+def test_build_authenticator_api_token_unwired(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTH__SCHEME", AuthScheme.API_TOKEN.value)
     with pytest.raises(NotImplementedError):
-        build_authenticator(config)
+        build_authenticator(get_config())
 
 
 def test_build_embedder_bge_default() -> None:
     pytest.importorskip("sentence_transformers")  # the `embed` extra
     from events_curator.embed import BgeEmbedder  # noqa: PLC0415
 
-    assert isinstance(build_embedder(AppConfig()), BgeEmbedder)
+    assert isinstance(build_embedder(get_config()), BgeEmbedder)
 
 
-def test_build_embedder_openai_with_key() -> None:
+def test_build_embedder_openai_with_key(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("openai")  # the `llm` extra
     from events_curator.embed import OpenAIEmbedder  # noqa: PLC0415
 
-    config = AppConfig(
-        llm=LLMSettings(api_key="sk-test"),
-        embedding=EmbeddingSettings(kind=EmbedderKind.OPENAI, model="text-embedding-3-small"),
-    )
-    assert isinstance(build_embedder(config), OpenAIEmbedder)
+    monkeypatch.setenv("LLM__API_KEY", "sk-test")
+    monkeypatch.setenv("EMBEDDING__KIND", "openai")
+    monkeypatch.setenv("EMBEDDING__MODEL", "text-embedding-3-small")
+    assert isinstance(build_embedder(get_config()), OpenAIEmbedder)
 
 
-def test_build_embedder_openai_unconfigured_without_key() -> None:
-    config = AppConfig(embedding=EmbeddingSettings(kind=EmbedderKind.OPENAI))
-    assert isinstance(build_embedder(config), UnconfiguredEmbedder)
+def test_build_embedder_openai_unconfigured_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EMBEDDING__KIND", "openai")  # baseline key is empty
+    assert isinstance(build_embedder(get_config()), UnconfiguredEmbedder)
 
 
 def test_build_llm_unconfigured_without_key() -> None:
-    config = AppConfig(llm=LLMSettings(api_key=""))
-    assert isinstance(build_llm(config), UnconfiguredLLM)
+    assert isinstance(build_llm(get_config()), UnconfiguredLLM)  # baseline key is empty
 
 
-def test_build_llm_openai_with_key() -> None:
+def test_build_llm_openai_with_key(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("openai")  # the `llm` extra
     from events_curator.llm import OpenAIChat  # noqa: PLC0415
 
-    config = AppConfig(llm=LLMSettings(api_key="sk-test", model="gpt-4o-mini"))
-    assert isinstance(build_llm(config), OpenAIChat)
+    monkeypatch.setenv("LLM__API_KEY", "sk-test")
+    assert isinstance(build_llm(get_config()), OpenAIChat)
 
 
-def test_build_llm_anthropic_unwired() -> None:
-    config = AppConfig(llm=LLMSettings(provider=LLMProvider.ANTHROPIC))
+def test_build_llm_anthropic_unwired(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM__PROVIDER", "anthropic")
     with pytest.raises(NotImplementedError):
-        build_llm(config)
+        build_llm(get_config())
 
 
 def test_build_search_backend_unconfigured_without_key() -> None:
-    config = AppConfig(llm=LLMSettings(api_key=""))
-    assert isinstance(build_search_backend(config), UnconfiguredWebSearch)
+    assert isinstance(
+        build_search_backend(get_config()), UnconfiguredWebSearch
+    )  # baseline empty key
 
 
-def test_build_search_backend_openai_with_key() -> None:
+def test_build_search_backend_openai_with_key(monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("openai")  # the `llm` extra
     from events_curator.search import OpenAIWebSearch  # noqa: PLC0415
 
-    config = AppConfig(llm=LLMSettings(api_key="sk-test", model="gpt-4o-mini"))
-    assert isinstance(build_search_backend(config), OpenAIWebSearch)
+    monkeypatch.setenv("LLM__API_KEY", "sk-test")
+    assert isinstance(build_search_backend(get_config()), OpenAIWebSearch)
 
 
 def test_build_search_engine_frontier_default() -> None:
-    assert isinstance(build_search_engine(AppConfig()), FrontierWebSearch)
+    assert isinstance(build_search_engine(get_config()), FrontierWebSearch)
 
 
-def test_build_search_engine_rejects_unwired_kind() -> None:
-    config = AppConfig(search=SearchSettings(engine=SearchEngineKind.EXA))
+def test_build_search_engine_rejects_unwired_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEARCH__ENGINE", "exa")
     with pytest.raises(NotImplementedError):
-        build_search_engine(config)
+        build_search_engine(get_config())

@@ -16,17 +16,18 @@ from events_curator.llm import ChatMessage
 
 
 class OpenAIChat:
-    def __init__(self, *, model: str, api_key: str = "", client: AsyncOpenAI | None = None) -> None:
-        self._model = model
+    def __init__(self, *, api_key: str = "", client: AsyncOpenAI | None = None) -> None:
         self._client = client or AsyncOpenAI(api_key=api_key)
 
-    async def complete(self, messages: Sequence[ChatMessage], *, temperature: float = 0.0) -> str:
+    async def complete(
+        self, messages: Sequence[ChatMessage], *, model: str, temperature: float = 0.0
+    ) -> str:
         payload = cast(
             "list[ChatCompletionMessageParam]",
             [{"role": m.role, "content": m.content} for m in messages],
         )
         response = await self._client.chat.completions.create(
-            model=self._model,
+            model=model,
             messages=payload,
             temperature=temperature,
         )

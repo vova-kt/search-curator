@@ -50,11 +50,29 @@ the extra in the image only once you've wired that adapter (`llm`, `embed`,
 
 ## Configuration
 
-All config is environment-driven, nested with the `__` delimiter
-(`DEDUP__AUTO_MERGE_THRESHOLD=0.9`). Copy `.env.example` to `.env`; compose loads
-it if present. The full set of groups and defaults is in `config.py` — that file
-is the single source of truth, so this page intentionally doesn't restate the
-keys.
+Config is file-first: `config.toml` at the project root, whose tables (`[llm]`,
+`[dedup]`, …) map to the nested config groups. Copy `config.example.toml` to
+`config.toml` and fill in secrets; compose mounts it read-only into both
+containers. Environment variables still override any value, nested with the `__`
+delimiter (`DEDUP__AUTO_MERGE_THRESHOLD=0.9`), which is how compose injects the
+per-service `STORAGE__DB_PATH` and how CI/secrets stores supply the API key
+without writing it to disk.
+
+There are **no in-code defaults**: every field must be present in `config.toml`
+(or supplied by an env override), and a missing one fails validation at startup
+rather than falling back to a hidden literal. That keeps the file the complete,
+auditable description of how a deployment behaves. The schema — every group and
+field — is in `config.py`, the single source of truth, so this page doesn't
+restate the keys; `config.example.toml` is the ready-to-copy filled-in template.
+
+Each LLM call site is a row under `[llm.roles.<role>]` (dedup judge, rank
+reranker, feedback summary), and each must define its own model, temperature, and
+system prompt — every role is required. The separate `[llm].model` is the model
+the native web-search backend runs. See [pipeline.md](pipeline.md) and
+[preferences.md](preferences.md) for what each role does.
+
+This app config is unrelated to `.streamlit/config.toml` (covered above), which
+configures Streamlit's own runtime, not events-curator.
 
 ## Logging
 

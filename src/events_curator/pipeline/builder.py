@@ -26,7 +26,7 @@ from events_curator.auth import Authenticator, LocalAuthenticator, TelegramAuthe
 from events_curator.config import AppConfig, get_config
 from events_curator.dedup import ThresholdDeduper
 from events_curator.embed import Embedder, UnconfiguredEmbedder
-from events_curator.enums import AuthScheme, EmbedderKind, LLMProvider, SearchEngineKind
+from events_curator.enums import AuthScheme, EmbedderKind, LLMProvider, LLMRole, SearchEngineKind
 from events_curator.expand import IdentityExpander
 from events_curator.feedback import ProfileUpdater
 from events_curator.llm import LLMClient, UnconfiguredLLM
@@ -75,14 +75,17 @@ def build_embedder(config: AppConfig) -> Embedder:
 
 def build_llm(config: AppConfig) -> LLMClient:
     """The LLM client for the configured `LLMProvider`: `OpenAIChat` when usable,
-    else `UnconfiguredLLM`. Anthropic is enumerated but has no adapter yet."""
+    else `UnconfiguredLLM`. The client is stateless about model/temperature — those
+    are per-call (`LLMClient.complete`), resolved per call site via
+    `config.llm.for_role` and passed by each stage, so one client serves them all.
+    Anthropic is enumerated but has no adapter yet."""
     match config.llm.provider:
         case LLMProvider.OPENAI:
             if not _openai_ready(config):
                 return UnconfiguredLLM()
             from events_curator.llm import OpenAIChat  # noqa: PLC0415  (keeps `llm` optional)
 
-            return OpenAIChat(model=config.llm.model, api_key=config.llm.api_key)
+            return OpenAIChat(api_key=config.llm.api_key)
         case LLMProvider.ANTHROPIC:
             raise NotImplementedError(
                 "ANTHROPIC provider has no LLMClient yet; add one in llm/ and wire it here."
@@ -113,9 +116,15 @@ def build_search_engine(config: AppConfig) -> SearchEngine:
 
 def build_default_stages(config: AppConfig) -> Stages:
     # One embedder and one LLM client, shared across the stages that need them, so a
-    # real adapter opens a single backing client rather than one per stage.
+    # real adapter opens a single backing client rather than one per stage. The LLM
+    # client is model/temperature-agnostic; each stage carries its own call site's
+    # model/temperature/prompt (`config.llm.for_role`) and passes them per call, so a
+    # single client still serves every call site.
     embedder = build_embedder(config)
     llm = build_llm(config)
+    judge = config.llm.for_role(LLMRole.DEDUP_JUDGE)
+    reranker = config.llm.for_role(LLMRole.RANK_RERANKER)
+    summary = config.llm.for_role(LLMRole.FEEDBACK_SUMMARY)
     return Stages(
         expander=IdentityExpander(),
         search=build_search_engine(config),
@@ -123,6 +132,9 @@ def build_default_stages(config: AppConfig) -> Stages:
         deduper=ThresholdDeduper(
             embedder,
             llm,
+            system_prompt=judge.prompt,
+            model=judge.model,
+            temperature=judge.temperature,
             auto_merge_threshold=config.dedup.auto_merge_threshold,
             tiebreak_low_threshold=config.dedup.tiebreak_low_threshold,
             block_window_days=config.dedup.block_window_days,
@@ -130,10 +142,19 @@ def build_default_stages(config: AppConfig) -> Stages:
         ranker=PreferenceRanker(
             embedder,
             llm,
+            system_prompt=reranker.prompt,
+            model=reranker.model,
+            temperature=reranker.temperature,
             top_n=config.rank.top_n,
             exploration_slots=config.rank.exploration_slots,
         ),
-        learner=ProfileUpdater(embedder, llm),
+        learner=ProfileUpdater(
+            embedder,
+            llm,
+            system_prompt=summary.prompt,
+            model=summary.model,
+            temperature=summary.temperature,
+        ),
     )
 
 

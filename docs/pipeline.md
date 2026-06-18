@@ -117,7 +117,10 @@ records the raw source that won each field. (No per-source trust scores yet, so
 
 The cross-session lookup is the store's `nearest` (date+city window), so dedup
 depends only on the `SearchResultStore` read side. Thresholds live in `config.py`, not
-as literals, so eval can sweep them.
+as literals, so eval can sweep them. The judge's model, temperature, and system
+prompt are the `dedup_judge` LLM role, defined under `[llm.roles.dedup_judge]` in
+config and passed in per `complete()` call, so the deduper holds no model state of
+its own — see [deployment.md](deployment.md#configuration).
 
 Shipped today: `ThresholdDeduper` is real — blocking + two-threshold similarity +
 the survivorship/provenance logic all run without any extra. It drives an

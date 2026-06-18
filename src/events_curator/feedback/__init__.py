@@ -48,9 +48,20 @@ class ProfileUpdater:
     Both adapters default to the Unconfigured placeholders in the builder, so a live
     run raises with a pointer to the `embed`/`llm` extra until real ones are wired."""
 
-    def __init__(self, embedder: Embedder, summarizer: LLMClient) -> None:
+    def __init__(
+        self,
+        embedder: Embedder,
+        summarizer: LLMClient,
+        *,
+        system_prompt: str,
+        model: str,
+        temperature: float = 0.0,
+    ) -> None:
         self._embedder = embedder
         self._summarizer = summarizer
+        self._system_prompt = system_prompt
+        self._model = model
+        self._temperature = temperature
 
     async def record(
         self,
@@ -84,8 +95,11 @@ class ProfileUpdater:
     async def _summarize(
         self, current_summary: str, feedback: Feedback, result: CanonicalSearchResult
     ) -> str:
-        prompt = build_summary_prompt(current_summary, feedback, result)
-        return parse_summary(await self._summarizer.complete(prompt))
+        prompt = build_summary_prompt(self._system_prompt, current_summary, feedback, result)
+        reply = await self._summarizer.complete(
+            prompt, model=self._model, temperature=self._temperature
+        )
+        return parse_summary(reply)
 
 
 __all__ = ["PreferenceLearner", "ProfileUpdater", "UnknownResultError"]

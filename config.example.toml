@@ -1,0 +1,73 @@
+# Copy to config.toml and fill in secrets. Every field below is REQUIRED. Tables map
+# to the nested config groups in src/events_curator/config.py. Environment
+# variables override any value, nested with the __ delimiter (e.g. LLM__API_KEY=...),
+# which is how Docker/CI inject secrets on top of this file.
+#
+
+# --- LLM ---
+# `model` here is the model the native web-search backend runs. The chat call
+# sites (dedup judge, rank reranker, feedback summary) each run their own model,
+# temperature, and system prompt under [llm.roles.<role>] below.
+[llm]
+provider = "openai"
+api_key = ""
+model = "gpt-4o-mini"
+
+[llm.roles.dedup_judge]
+model = "gpt-4o-mini"
+temperature = 0.0
+prompt = """You are a deduplication judge for search results. Two records are shown. Decide whether they describe the SAME real-world item (the same event, paper, listing, etc.) even if their titles, wording, or URLs differ. Reply with exactly 'yes' or 'no'."""
+
+[llm.roles.rank_reranker]
+model = "gpt-4o-mini"
+temperature = 0.0
+prompt = """You are a personalization reranker for a recurring web search. You are given the search's learned taste and a numbered list of candidate results. Order the candidates from best to worst fit for that taste. Reply with ONLY a JSON object {"ranking": [{"id": <candidate number>, "why": "<short reason>"}, ...]} — no prose, no code fences. Include every candidate number exactly once, best first."""
+
+[llm.roles.feedback_summary]
+model = "gpt-4o-mini"
+temperature = 0.0
+prompt = """You maintain a short natural-language description of what one recurring web search likes and dislikes. You are given the current description and one new like or dislike. Rewrite the description so it accounts for the new signal: keep it to a few sentences, concrete, and even-handed about likes and dislikes. Reply with ONLY the updated description — no preamble, no quotes."""
+
+# --- Embeddings (dedup similarity, taste vectors) ---
+[embedding]
+kind = "bge_small"
+model = "BAAI/bge-small-en-v1.5"
+dimensions = 384
+
+# --- Search ---
+[search]
+engine = "frontier_native"
+max_results_per_query = 20
+rrf_k = 60
+
+# --- Dedup thresholds ---
+[dedup]
+auto_merge_threshold = 0.88
+tiebreak_low_threshold = 0.75
+block_window_days = 1
+
+# --- Rank ---
+[rank]
+top_n = 25
+exploration_slots = 2
+logistic_blender_min_labels = 50
+
+# --- Storage ---
+[storage]
+db_path = "./events.db"
+
+# --- Auth (DB is multi-user; pick how callers are identified) ---
+[auth]
+scheme = "local"
+api_token = ""
+
+# --- Server / scheduler ---
+[server]
+host = "0.0.0.0"
+port = 8080
+scheduler_tick_seconds = 300
+
+# --- Logging (baseline level at startup; the Streamlit console forces DEBUG) ---
+[logging]
+level = "INFO"
+format = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"

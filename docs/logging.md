@@ -18,7 +18,7 @@ interaction re-applies cleanly instead of stacking duplicate handlers.
 **Ad-hoc scripts get configured implicitly.** Standalone scripts (in `pipelines/`,
 `evaluation/`) don't call `setup_logging`. Instead `sitecustomize.py` — which Python
 imports automatically at interpreter startup, before any user code, whenever the
-project root is on `PYTHONPATH` (set `PYTHONPATH=.` in `.env`) — loads `logging.ini`
+project root is on `PYTHONPATH` (e.g. `PYTHONPATH=.` in your shell) — loads `logging.ini`
 via `logging.config.fileConfig`. So a bare `python some_script.py` gets sensible
 logging with zero boilerplate. To change it, edit `logging.ini`, never
 `sitecustomize.py`.

@@ -31,7 +31,7 @@ from events_curator.enums import LogLevel
 
 def main() -> None:
     st.set_page_config(page_title="events-curator", layout="wide")
-    # The operator console always runs at DEBUG, regardless of LOGGING__LEVEL in .env.
+    # The operator console always runs at DEBUG, regardless of the configured log level.
     setup_logging(get_config(), level_override=LogLevel.DEBUG)
     st.navigation(
         [

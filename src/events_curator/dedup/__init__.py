@@ -83,6 +83,9 @@ class ThresholdDeduper:
         embedder: Embedder,
         judge: LLMClient,
         *,
+        system_prompt: str,
+        model: str,
+        temperature: float = 0.0,
         auto_merge_threshold: float = 0.88,
         tiebreak_low_threshold: float = 0.75,
         block_window_days: int = 1,
@@ -90,6 +93,9 @@ class ThresholdDeduper:
     ) -> None:
         self._embedder = embedder
         self._judge = judge
+        self._system_prompt = system_prompt
+        self._model = model
+        self._temperature = temperature
         self._auto_merge_threshold = auto_merge_threshold
         self._tiebreak_low_threshold = tiebreak_low_threshold
         self._block_window_days = block_window_days
@@ -196,7 +202,11 @@ class ThresholdDeduper:
         )
 
     async def _judge_same(self, candidate: RawSearchResult, other: CanonicalSearchResult) -> bool:
-        reply = await self._judge.complete(build_judge_prompt(candidate, other))
+        reply = await self._judge.complete(
+            build_judge_prompt(self._system_prompt, candidate, other),
+            model=self._model,
+            temperature=self._temperature,
+        )
         return parse_judge_verdict(reply)
 
 

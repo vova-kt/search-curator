@@ -39,8 +39,8 @@ class FakeReranker:
         self._reply = reply
         self.calls = 0
 
-    async def complete(self, messages: object, *, temperature: float = 0.0) -> str:
-        del messages, temperature
+    async def complete(self, messages: object, *, model: str, temperature: float = 0.0) -> str:
+        del messages, model, temperature
         self.calls += 1
         return self._reply
 
@@ -121,9 +121,12 @@ def test_parse_rerank_tolerates_junk() -> None:
 
 def test_build_rerank_prompt_carries_summary_and_candidates() -> None:
     results = [_result("Jazz Night"), _result("Punk Show")]
-    messages = build_rerank_prompt(results, summary="loves small venues", query=_query())
+    messages = build_rerank_prompt(
+        "be a reranker", results, summary="loves small venues", query=_query()
+    )
 
     assert [m.role for m in messages] == ["system", "user"]
+    assert messages[0].content == "be a reranker"
     assert "loves small venues" in messages[1].content
     assert "1. Jazz Night" in messages[1].content
     assert "2. Punk Show" in messages[1].content
@@ -134,7 +137,7 @@ def test_build_rerank_prompt_carries_summary_and_candidates() -> None:
 
 
 def _ranker(embedder: FakeEmbedder, reranker: FakeReranker, **kw: int) -> PreferenceRanker:
-    return PreferenceRanker(embedder, reranker, **kw)
+    return PreferenceRanker(embedder, reranker, system_prompt="rerank", model="test-model", **kw)
 
 
 async def test_empty_results_skips_work() -> None:

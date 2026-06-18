@@ -26,10 +26,11 @@ async def test_complete_sends_messages_and_returns_content(monkeypatch: pytest.M
 
     client = AsyncOpenAI(api_key="test")
     monkeypatch.setattr(client.chat.completions, "create", fake_create)
-    llm = OpenAIChat(model="gpt-4o-mini", client=client)
+    llm = OpenAIChat(client=client)
 
     reply = await llm.complete(
         [ChatMessage(role="system", content="be terse"), ChatMessage(role="user", content="hi")],
+        model="gpt-4o-mini",
         temperature=0.2,
     )
 
@@ -49,6 +50,6 @@ async def test_complete_handles_empty_content(monkeypatch: pytest.MonkeyPatch) -
 
     client = AsyncOpenAI(api_key="test")
     monkeypatch.setattr(client.chat.completions, "create", fake_create)
-    llm = OpenAIChat(model="gpt-4o-mini", client=client)
+    llm = OpenAIChat(client=client)
 
-    assert await llm.complete([ChatMessage(role="user", content="hi")]) == ""
+    assert await llm.complete([ChatMessage(role="user", content="hi")], model="gpt-4o-mini") == ""

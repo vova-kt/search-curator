@@ -1,15 +1,14 @@
 # Two thin UIs over one DB: the scheduler server and the Streamlit DB view.
 # They share a volume so the view sees what the server writes. Copy
-# .env.example -> .env to supply API keys and overrides.
+# config.example.toml -> config.toml to supply API keys and overrides; it is
+# mounted read-only into each container (env vars still override any value).
 services:
   server:
     build: .
-    env_file:
-      - path: .env
-        required: false
     environment:
       STORAGE__DB_PATH: /data/events.db
     volumes:
+      - ./config.toml:/app/config.toml:ro
       - events-data:/data
     restart: unless-stopped
 
@@ -23,14 +22,12 @@ services:
       - src/events_curator/apps/streamlit_app/app.py
       - --server.port=8501
       - --server.address=0.0.0.0
-    env_file:
-      - path: .env
-        required: false
     environment:
       STORAGE__DB_PATH: /data/events.db
     ports:
       - "8501:8501"
     volumes:
+      - ./config.toml:/app/config.toml:ro
       - events-data:/data
     restart: unless-stopped
 

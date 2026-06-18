@@ -42,8 +42,10 @@ class FakeJudge:
         self._verdict = verdict
         self.calls: list[Sequence[ChatMessage]] = []
 
-    async def complete(self, messages: Sequence[ChatMessage], *, temperature: float = 0.0) -> str:
-        del temperature
+    async def complete(
+        self, messages: Sequence[ChatMessage], *, model: str, temperature: float = 0.0
+    ) -> str:
+        del model, temperature
         self.calls.append(messages)
         return self._verdict
 
@@ -72,6 +74,8 @@ def _deduper(embedder: FakeEmbedder, judge: FakeJudge | None = None) -> Threshol
     return ThresholdDeduper(
         embedder,
         judge or FakeJudge("no"),
+        system_prompt="judge",
+        model="test-model",
         auto_merge_threshold=0.88,
         tiebreak_low_threshold=0.75,
         block_window_days=1,
@@ -242,9 +246,10 @@ def test_parse_judge_verdict() -> None:
 def test_build_judge_prompt_carries_both_records() -> None:
     candidate = _cand("Trail Race", description="10k")
     canonical, _ = new_golden(_cand("Mountain Run"), [1.0, 0.0])
-    messages = build_judge_prompt(candidate, canonical)
+    messages = build_judge_prompt("be a judge", candidate, canonical)
 
     assert [m.role for m in messages] == ["system", "user"]
+    assert messages[0].content == "be a judge"
     assert "Trail Race" in messages[1].content
     assert "Mountain Run" in messages[1].content
 

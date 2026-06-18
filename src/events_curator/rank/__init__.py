@@ -56,11 +56,17 @@ class PreferenceRanker:
         embedder: Embedder,
         reranker: LLMClient,
         *,
+        system_prompt: str,
+        model: str,
+        temperature: float = 0.0,
         top_n: int = 25,
         exploration_slots: int = 2,
     ) -> None:
         self._embedder = embedder
         self._reranker = reranker
+        self._system_prompt = system_prompt
+        self._model = model
+        self._temperature = temperature
         self._top_n = top_n
         self._exploration_slots = exploration_slots
 
@@ -112,8 +118,13 @@ class PreferenceRanker:
         profile: PreferenceProfile,
         query: SavedQuery,
     ) -> tuple[list[CanonicalSearchResult], dict[CanonicalSearchResultId, str]]:
-        prompt = build_rerank_prompt(head, summary=profile.nl_summary, query=query)
-        order = parse_rerank(await self._reranker.complete(prompt), count=len(head))
+        prompt = build_rerank_prompt(
+            self._system_prompt, head, summary=profile.nl_summary, query=query
+        )
+        reply = await self._reranker.complete(
+            prompt, model=self._model, temperature=self._temperature
+        )
+        order = parse_rerank(reply, count=len(head))
         seen = {index for index, _ in order}
         order += [(i, None) for i in range(len(head)) if i not in seen]
         ranked = [head[index] for index, _ in order]

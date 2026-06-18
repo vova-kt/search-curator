@@ -4,9 +4,8 @@
 *.db-journal
 *.sqlite
 *.sqlite-journal
-.env
-.env.*
-!.env.example
+config.toml
+!config.example.toml
 .DS_Store
 coverage/
 .vscode/

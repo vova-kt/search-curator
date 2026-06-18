@@ -27,23 +27,20 @@ class ChatMessage(BaseModel):
 
 class LLMClient(Protocol):
     async def complete(
-        self,
-        messages: Sequence[ChatMessage],
-        *,
-        temperature: float = 0.0,
-    ) -> str: ...
+        self, messages: Sequence[ChatMessage], *, model: str, temperature: float = 0.0
+    ) -> str:
+        """Complete a chat. `model` and `temperature` are per-call so one client can
+        serve every call site, each with its own configured model/temperature."""
+        ...
 
 
 class UnconfiguredLLM:
     """Default placeholder. Swap in `OpenAIChat` (extra `llm`) or another adapter."""
 
     async def complete(
-        self,
-        messages: Sequence[ChatMessage],
-        *,
-        temperature: float = 0.0,
+        self, messages: Sequence[ChatMessage], *, model: str, temperature: float = 0.0
     ) -> str:
-        del messages, temperature
+        del messages, model, temperature
         raise NotImplementedError("No LLM adapter; install the `llm` extra and wire one.")
 
 

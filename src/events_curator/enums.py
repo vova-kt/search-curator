@@ -53,6 +53,16 @@ class LLMProvider(StrEnum):
     ANTHROPIC = "anthropic"
 
 
+class LLMRole(StrEnum):
+    """The distinct LLM call sites. Each is configured with its own model,
+    temperature, and system prompt under `[llm.roles.<role>]` in `config.toml`;
+    every role listed here must be present there (enforced by `LLMSettings`)."""
+
+    DEDUP_JUDGE = "dedup_judge"  # tiebreak same-item judge
+    RANK_RERANKER = "rank_reranker"  # preference reranker
+    FEEDBACK_SUMMARY = "feedback_summary"  # NL taste-summary rewriter
+
+
 class EmbedderKind(StrEnum):
     BGE_SMALL = "bge_small"  # local CPU-friendly default
     OPENAI = "openai"  # text-embedding-3-small via API

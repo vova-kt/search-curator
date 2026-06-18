@@ -1,9 +1,11 @@
 """The profile-summarizer's prompt/parse contract, kept dependency-free (no LLM
 adapter) so it is unit-testable without the ``llm`` extra — mirrors
-``dedup/_judge.py``. The model is shown the search's current taste summary and one
-fresh like/dislike (with the item and the user's optional free-text reason), and
-asked to return a short, rewritten summary that folds the new signal in. Free text,
-not JSON — the summary is read back verbatim."""
+``dedup/_judge.py``. The system instruction is passed in (resolved from config per
+``LLMRole.FEEDBACK_SUMMARY``); this module assembles the user message: the search's
+current taste summary and one fresh like/dislike (with the item and the user's
+optional free-text reason), asking the model to return a short, rewritten summary
+that folds the new signal in. Free text, not JSON — the summary is read back
+verbatim."""
 
 from __future__ import annotations
 
@@ -11,17 +13,9 @@ from events_curator.enums import FeedbackKind
 from events_curator.llm import ChatMessage
 from events_curator.models import CanonicalSearchResult, Feedback
 
-_SYSTEM = (
-    "You maintain a short natural-language description of what one recurring web "
-    "search likes and dislikes. You are given the current description and one new "
-    "like or dislike. Rewrite the description so it accounts for the new signal: keep "
-    "it to a few sentences, concrete, and even-handed about likes and dislikes. Reply "
-    "with ONLY the updated description — no preamble, no quotes."
-)
-
 
 def build_summary_prompt(
-    current_summary: str, feedback: Feedback, result: CanonicalSearchResult
+    system: str, current_summary: str, feedback: Feedback, result: CanonicalSearchResult
 ) -> list[ChatMessage]:
     verb = "LIKED" if feedback.kind is FeedbackKind.LIKE else "DISLIKED"
     tags = ", ".join(result.tags) if result.tags else "none"
@@ -36,7 +30,7 @@ def build_summary_prompt(
         "Return the updated description."
     )
     return [
-        ChatMessage(role="system", content=_SYSTEM),
+        ChatMessage(role="system", content=system),
         ChatMessage(role="user", content=body),
     ]
 
