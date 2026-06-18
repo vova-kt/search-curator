@@ -27,9 +27,21 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
+class GeoBias(BaseModel):
+    """A user's approximate location, used as a geographic bias for web search.
+    Any field left blank is omitted; an all-blank bias means "no location
+    preference" (e.g. a non-geographic target like papers)."""
+
+    city: str = ""
+    country: str = ""  # ISO 3166 alpha-2
+    region: str = ""
+    timezone: str = ""  # IANA name, e.g. "Europe/Berlin"
+
+
 class User(BaseModel):
     id: UserId = Field(default_factory=new_user_id)
     display_name: str = ""
+    location: GeoBias = Field(default_factory=GeoBias)  # where this user searches from
     created_at: datetime = Field(default_factory=_now)
 
 

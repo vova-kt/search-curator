@@ -61,7 +61,7 @@ async def test_find_offers_both_tools_and_parses_submit_call(
     client = AsyncOpenAI(api_key="test")
     monkeypatch.setattr(client.responses, "create", fake_create)
 
-    rows = await _backend(client).find("jazz in berlin", max_results=3)
+    rows = await _backend(client).find("jazz in berlin", max_results=3, location=GeoBias())
 
     assert [r.url for r in rows] == ["https://a.com"]
     assert captured["model"] == "gpt-4o-mini"
@@ -82,12 +82,11 @@ async def test_find_includes_location_and_domain_filters(monkeypatch: pytest.Mon
 
     client = AsyncOpenAI(api_key="test")
     monkeypatch.setattr(client.responses, "create", fake_create)
-    tuning = _tuning(
-        allowed_domains=["arxiv.org"],
-        location=GeoBias(city="Berlin", country="DE"),
-    )
+    tuning = _tuning(allowed_domains=["arxiv.org"])
 
-    await _backend(client, tuning).find("jazz", max_results=3)
+    await _backend(client, tuning).find(
+        "jazz", max_results=3, location=GeoBias(city="Berlin", country="DE")
+    )
 
     web_search = _web_search(captured["tools"])
     assert web_search["filters"]["allowed_domains"] == ["arxiv.org"]
@@ -110,7 +109,7 @@ async def test_find_omits_location_and_filters_when_unset(
     client = AsyncOpenAI(api_key="test")
     monkeypatch.setattr(client.responses, "create", fake_create)
 
-    await _backend(client).find("jazz", max_results=3)
+    await _backend(client).find("jazz", max_results=3, location=GeoBias())
 
     web_search = _web_search(captured["tools"])
     assert "filters" not in web_search
@@ -125,4 +124,4 @@ async def test_find_returns_empty_without_submit_call(monkeypatch: pytest.Monkey
     client = AsyncOpenAI(api_key="test")
     monkeypatch.setattr(client.responses, "create", fake_create)
 
-    assert await _backend(client).find("jazz in berlin", max_results=3) == []
+    assert await _backend(client).find("jazz in berlin", max_results=3, location=GeoBias()) == []

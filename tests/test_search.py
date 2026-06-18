@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import pytest
 
 from events_curator.enums import SearchEngineKind
-from events_curator.models import ExpandedQuery, new_saved_query_id
+from events_curator.models import ExpandedQuery, GeoBias, new_saved_query_id
 from events_curator.search import (
     ExtractedResult,
     FrontierWebSearch,
@@ -31,9 +31,13 @@ class _Backend:
     def __init__(self, rows: list[ExtractedResult]) -> None:
         self._rows = rows
         self.calls: list[tuple[str, int]] = []
+        self.locations: list[GeoBias] = []
 
-    async def find(self, query: str, *, max_results: int) -> list[ExtractedResult]:
+    async def find(
+        self, query: str, *, max_results: int, location: GeoBias
+    ) -> list[ExtractedResult]:
         self.calls.append((query, max_results))
+        self.locations.append(location)
         return self._rows
 
 
@@ -59,9 +63,10 @@ async def test_engine_maps_rows_to_raw_results() -> None:
             )
         ]
     )
-    [result] = await FrontierWebSearch(backend).search(query)
+    [result] = await FrontierWebSearch(backend).search(query, location=GeoBias(city="Berlin"))
 
     assert backend.calls == [("jazz in berlin", 20)]
+    assert backend.locations == [GeoBias(city="Berlin")]  # the engine threads it to the backend
     assert result.source_query_id == query.id
     assert result.source_engine is SearchEngineKind.FRONTIER_NATIVE
     assert result.url == "https://example.com/show"  # www/tracking/fragment/slash gone
@@ -80,14 +85,14 @@ async def test_engine_ranks_contiguously_and_skips_blank_urls() -> None:
             ExtractedResult(url="https://b.com", title="b"),
         ]
     )
-    results = await FrontierWebSearch(backend).search(_query())
+    results = await FrontierWebSearch(backend).search(_query(), location=GeoBias())
 
     assert [(r.url, r.rank) for r in results] == [("https://a.com", 0), ("https://b.com", 1)]
 
 
 async def test_engine_truncates_to_max_results() -> None:
     backend = _Backend([ExtractedResult(url=f"https://e.com/{i}", title=str(i)) for i in range(5)])
-    results = await FrontierWebSearch(backend, max_results=2).search(_query())
+    results = await FrontierWebSearch(backend, max_results=2).search(_query(), location=GeoBias())
 
     assert [r.rank for r in results] == [0, 1]
     assert backend.calls == [("jazz in berlin", 2)]
@@ -95,7 +100,7 @@ async def test_engine_truncates_to_max_results() -> None:
 
 async def test_unconfigured_backend_raises() -> None:
     with pytest.raises(NotImplementedError):
-        await UnconfiguredWebSearch().find("q", max_results=5)
+        await UnconfiguredWebSearch().find("q", max_results=5, location=GeoBias())
 
 
 @pytest.mark.parametrize(

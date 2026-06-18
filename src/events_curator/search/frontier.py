@@ -20,7 +20,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pydantic import BaseModel, Field
 
 from events_curator.enums import ReasoningEffort, SearchContextSize, SearchEngineKind
-from events_curator.models import ExpandedQuery, Geo, RawSearchResult
+from events_curator.models import ExpandedQuery, Geo, GeoBias, RawSearchResult
 
 # Query params that identify a click, not the resource. Dropped so the same item
 # linked from two campaigns canonicalizes to one URL.
@@ -94,34 +94,35 @@ class ExtractedResults(BaseModel):
     results: list[ExtractedResult] = Field(default_factory=list[ExtractedResult])
 
 
-class GeoBias(BaseModel):
-    """Optional geographic hint for a web-search call. Any field left blank is
-    omitted; an all-blank bias means "no location preference"."""
-
-    city: str = ""
-    country: str = ""  # ISO 3166 alpha-2
-    region: str = ""
-    timezone: str = ""  # IANA name, e.g. "Europe/Berlin"
-
-
 class WebSearchTuning(BaseModel):
     """Provider-tuning for a native web-search call, resolved from `[search]` config
     by the builder and handed to the backend: how hard the model thinks, how much
-    web context it pulls, an optional geographic bias, and an optional domain
-    allow-list. Provider-agnostic in shape; the OpenAI backend maps it onto the
-    Responses `web_search` tool and `reasoning.effort`."""
+    web context it pulls, and an optional domain allow-list. The geographic bias is
+    *not* here — it's a per-user attribute (`User.location`) passed per call.
+    Provider-agnostic in shape; the OpenAI backend maps it onto the Responses
+    `web_search` tool and `reasoning.effort`."""
 
     search_context_size: SearchContextSize
     reasoning_effort: ReasoningEffort
     allowed_domains: list[str] = Field(default_factory=list[str])
-    location: GeoBias = Field(default_factory=GeoBias)
 
 
 class WebSearchBackend(Protocol):
-    async def find(self, query: str, *, max_results: int) -> list[ExtractedResult]: ...
+    async def find(
+        self, query: str, *, max_results: int, location: GeoBias
+    ) -> list[ExtractedResult]: ...
 
 
-class FrontierWebSearch:
+class SearchEngine(Protocol):
+    """One expanded query against the web, biased by the requesting user's location.
+    The orchestrator fans out across queries concurrently (rule 5)."""
+
+    kind: SearchEngineKind
+
+    async def search(self, query: ExpandedQuery, *, location: GeoBias) -> list[RawSearchResult]: ...
+
+
+class FrontierWebSearch(SearchEngine):
     """Drives a `WebSearchBackend` for one expanded query and shapes its rows into
     ranked `RawSearchResult`s. The orchestrator fans out across queries (rule 5),
     so this issues a single backend call per query."""
@@ -132,8 +133,10 @@ class FrontierWebSearch:
         self._backend = backend
         self._max_results = max_results
 
-    async def search(self, query: ExpandedQuery) -> list[RawSearchResult]:
-        extracted = await self._backend.find(query.text, max_results=self._max_results)
+    async def search(self, query: ExpandedQuery, *, location: GeoBias) -> list[RawSearchResult]:
+        extracted = await self._backend.find(
+            query.text, max_results=self._max_results, location=location
+        )
         results: list[RawSearchResult] = []
         for item in extracted:
             url = canonicalize_url(item.url)
@@ -163,8 +166,10 @@ class FrontierWebSearch:
 class UnconfiguredWebSearch(WebSearchBackend):
     """Default backend: raises until a real one (extra `llm`) is wired."""
 
-    async def find(self, query: str, *, max_results: int) -> list[ExtractedResult]:
-        del query, max_results
+    async def find(
+        self, query: str, *, max_results: int, location: GeoBias
+    ) -> list[ExtractedResult]:
+        del query, max_results, location
         raise NotImplementedError(
             "No web-search backend; install the `llm` extra and wire OpenAIWebSearch."
         )

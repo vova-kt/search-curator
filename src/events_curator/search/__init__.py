@@ -14,14 +14,13 @@ implements a single query here.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
-from events_curator.enums import SearchEngineKind
-from events_curator.models import ExpandedQuery, RawSearchResult
 from events_curator.search.frontier import (
     ExtractedResult,
     FrontierWebSearch,
     GeoBias,
+    SearchEngine,
     UnconfiguredWebSearch,
     WebSearchBackend,
     WebSearchTuning,
@@ -30,12 +29,6 @@ from events_curator.search.frontier import (
 
 if TYPE_CHECKING:
     from events_curator.search.openai_native import OpenAIWebSearch
-
-
-class SearchEngine(Protocol):
-    kind: SearchEngineKind
-
-    async def search(self, query: ExpandedQuery) -> list[RawSearchResult]: ...
 
 
 __all__ = [

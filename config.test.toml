@@ -37,12 +37,6 @@ reasoning_effort = "medium"
 allowed_domains = []
 instructions = "test search instructions"
 
-[search.user_location]
-city = ""
-country = ""
-region = ""
-timezone = ""
-
 [dedup]
 auto_merge_threshold = 0.88
 tiebreak_low_threshold = 0.75

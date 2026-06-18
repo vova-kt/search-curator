@@ -25,12 +25,14 @@ from events_curator.models import (
     DedupOutcome,
     ExpandedQuery,
     Feedback,
+    GeoBias,
     PreferenceProfile,
     Principal,
     Provenance,
     RankedSearchResult,
     RawSearchResult,
     SavedQuery,
+    User,
     UserId,
     new_canonical_search_result_id,
     new_saved_query_id,
@@ -52,7 +54,11 @@ from events_curator.storage import (
 class FakeSearch:
     kind = SearchEngineKind.FRONTIER_NATIVE
 
-    async def search(self, query: ExpandedQuery) -> list[RawSearchResult]:
+    def __init__(self) -> None:
+        self.locations: list[GeoBias] = []
+
+    async def search(self, query: ExpandedQuery, *, location: GeoBias) -> list[RawSearchResult]:
+        self.locations.append(location)
         return [
             RawSearchResult(
                 source_query_id=query.id,
@@ -131,15 +137,19 @@ class FakeLearner:
         return profile
 
 
-def _stages() -> Stages:
+def _stages_with(search: FakeSearch) -> Stages:
     return Stages(
         expander=IdentityExpander(),
-        search=FakeSearch(),
+        search=search,
         merger=RRFMerger(k=60),
         deduper=FakeDeduper(),
         ranker=FakeRanker(),
         learner=FakeLearner(),
     )
+
+
+def _stages() -> Stages:
+    return _stages_with(FakeSearch())
 
 
 async def _pipeline_with_query(
@@ -161,6 +171,33 @@ async def test_run_returns_ranked_results() -> None:
 
     assert len(ranked) == 2
     assert [r.rank for r in ranked] == [0, 1]
+
+
+async def test_run_passes_owner_location_to_search() -> None:
+    storage = InMemoryStorage()
+    owner = UserId("u1")
+    await storage.users.upsert(User(id=owner, location=GeoBias(city="Berlin", country="DE")))
+    query = SavedQuery(user_id=owner, text="jazz in berlin")
+    await storage.queries.upsert(query)
+    search = FakeSearch()
+    pipeline = CurationPipeline(_stages_with(search), storage)
+
+    await pipeline.run(query.id, _principal(owner))
+
+    assert search.locations == [GeoBias(city="Berlin", country="DE")]
+
+
+async def test_run_defaults_to_empty_location_without_user_row() -> None:
+    storage = InMemoryStorage()
+    owner = UserId("u1")  # no User row upserted -> no geographic bias
+    query = SavedQuery(user_id=owner, text="jazz in berlin")
+    await storage.queries.upsert(query)
+    search = FakeSearch()
+    pipeline = CurationPipeline(_stages_with(search), storage)
+
+    await pipeline.run(query.id, _principal(owner))
+
+    assert search.locations == [GeoBias()]
 
 
 async def test_run_rejects_non_owner() -> None:

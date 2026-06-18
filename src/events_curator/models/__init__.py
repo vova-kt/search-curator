@@ -6,6 +6,7 @@ from __future__ import annotations
 from events_curator.models.core import (
     ExpandedQuery,
     ExpandedQuerySet,
+    GeoBias,
     Principal,
     SavedQuery,
     TimeWindow,
@@ -45,6 +46,7 @@ __all__ = [
     "Feedback",
     "FeedbackId",
     "Geo",
+    "GeoBias",
     "PreferenceProfile",
     "Principal",
     "Provenance",

@@ -91,10 +91,14 @@ needs no schema change. This is the open-ended escape hatch noted under rule 4.
 
 The model's search behaviour is tuned from config, not hard-coded: `WebSearchTuning`
 (built in the search layer, bridged from `[search]` by the builder) maps onto the
-Responses `web_search` tool — `search_context_size`, a domain allow-list, and an
-approximate `user_location` geographic bias — plus `reasoning.effort`, whose values
-track the OpenAI `ReasoningEffort` levels. Empty knobs are omitted from the request
-rather than sent blank, so a minimal config asks for the tool's own defaults.
+Responses `web_search` tool — `search_context_size` and a domain allow-list — plus
+`reasoning.effort`, whose values track the OpenAI `ReasoningEffort` levels. The
+geographic bias is deliberately *not* config: the DB is multi-user, and where
+someone searches from is theirs, not the deployment's — so it lives on the user
+(`User.location`, a `GeoBias`). Each run resolves the requesting principal's
+location and threads it into the search call (an absent user row means no bias).
+Empty knobs are omitted from the request rather than sent blank, so a minimal
+config asks for the tool's own defaults.
 
 ## merge — `merge/`
 

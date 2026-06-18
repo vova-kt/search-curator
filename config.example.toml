@@ -40,8 +40,8 @@ dimensions = 384
 # (derived from ExtractedResult), so the prompt need not enumerate fields.
 # `search_context_size` (low|medium|high) trades cost for recall; `reasoning_effort`
 # (none|minimal|low|medium|high|xhigh) is the model's thinking budget; `allowed_domains`
-# restricts web_search to an allow-list (empty = no restriction). `[search.user_location]`
-# biases results geographically — leave the fields blank for non-geographic targets.
+# restricts web_search to an allow-list (empty = no restriction). Geographic bias is
+# NOT config — it's the per-user `User.location` attribute, threaded in per run.
 [search]
 engine = "frontier_native"
 max_results_per_query = 20
@@ -50,12 +50,6 @@ search_context_size = "medium"
 reasoning_effort = "medium"
 allowed_domains = []
 instructions = """You are a web research assistant. Use web search to find current, real results that satisfy the user's request, read the pages you find, and extract structured data. When you are done, call the `submit_results` tool exactly once with every result you found; do not reply in prose. Omit any result you cannot tie to a real, absolute http(s) URL."""
-
-[search.user_location]
-city = ""
-country = ""
-region = ""
-timezone = ""
 
 # --- Dedup thresholds ---
 [dedup]

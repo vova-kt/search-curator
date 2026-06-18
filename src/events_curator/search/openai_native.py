@@ -2,8 +2,9 @@
 `llm`). One `responses.create` call per query: the model searches the web, reads
 pages, and reports its findings by calling the `submit_results` function tool,
 whose typed arguments `parse_submission` validates. The `WebSearchTuning` resolved
-from config maps onto the Responses `web_search` tool (context size, geographic
-bias, domain allow-list) and `reasoning.effort`. Imported only via the module
+from config maps onto the Responses `web_search` tool (context size, domain
+allow-list) and `reasoning.effort`; the per-user `GeoBias` passed to `find` adds
+the tool's approximate `user_location`. Imported only via the module
 door's lazy re-export, so the base `search` import never needs the extra — and
 `from events_curator.search import OpenAIWebSearch` raises a clear ImportError when
 `llm` isn't installed."""
@@ -27,7 +28,12 @@ from events_curator.search._extract import (
     parse_submission,
     submit_tool,
 )
-from events_curator.search.frontier import ExtractedResult, WebSearchBackend, WebSearchTuning
+from events_curator.search.frontier import (
+    ExtractedResult,
+    GeoBias,
+    WebSearchBackend,
+    WebSearchTuning,
+)
 
 
 class OpenAIWebSearch(WebSearchBackend):
@@ -45,12 +51,14 @@ class OpenAIWebSearch(WebSearchBackend):
         self._tuning = tuning
         self._client = client or AsyncOpenAI(api_key=api_key)
 
-    async def find(self, query: str, *, max_results: int) -> list[ExtractedResult]:
+    async def find(
+        self, query: str, *, max_results: int, location: GeoBias
+    ) -> list[ExtractedResult]:
         response = await self._client.responses.create(
             model=self._model,
             instructions=self._instructions,
             input=build_search_prompt(query, max_results=max_results),
-            tools=[self._web_search_tool(), cast("FunctionToolParam", submit_tool())],
+            tools=[self._web_search_tool(location), cast("FunctionToolParam", submit_tool())],
             reasoning=Reasoning(effort=self._tuning.reasoning_effort.value),
         )
         for item in response.output:
@@ -58,20 +66,20 @@ class OpenAIWebSearch(WebSearchBackend):
                 return parse_submission(item.arguments, max_results=max_results)
         return []
 
-    def _web_search_tool(self) -> WebSearchToolParam:
+    def _web_search_tool(self, location: GeoBias) -> WebSearchToolParam:
         tool = WebSearchToolParam(
             type="web_search",
             search_context_size=self._tuning.search_context_size.value,
         )
         if self._tuning.allowed_domains:
             tool["filters"] = Filters(allowed_domains=list(self._tuning.allowed_domains))
-        location = self._user_location()
-        if location is not None:
-            tool["user_location"] = location
+        user_location = self._user_location(location)
+        if user_location is not None:
+            tool["user_location"] = user_location
         return tool
 
-    def _user_location(self) -> UserLocation | None:
-        loc = self._tuning.location
+    @staticmethod
+    def _user_location(loc: GeoBias) -> UserLocation | None:
         if not any((loc.city, loc.country, loc.region, loc.timezone)):
             return None
         location = UserLocation(type="approximate")

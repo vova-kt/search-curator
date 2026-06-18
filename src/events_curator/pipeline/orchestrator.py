@@ -21,6 +21,7 @@ from events_curator.feedback import PreferenceLearner
 from events_curator.merge import Merger
 from events_curator.models import (
     Feedback,
+    GeoBias,
     PreferenceProfile,
     Principal,
     RankedSearchResult,
@@ -98,11 +99,18 @@ class CurationPipeline:
         expanded = await self._stages.expander.expand(query)
         report.done(Stage.EXPAND, f"Expanded into {len(expanded.queries)} web search(es)")
 
+        # Location is a per-user attribute, not deployment config: bias the search by
+        # where the requesting user is. Absent user/location means no geographic bias.
+        user = await self._storage.users.get(principal.user_id)
+        location = user.location if user is not None else GeoBias()
+
         # Rule 5: every expanded query is searched concurrently.
         report.start(
             Stage.SEARCH, f"Searching the web — {len(expanded.queries)} query(ies) in parallel…"
         )
-        per_query = await asyncio.gather(*[self._stages.search.search(q) for q in expanded.queries])
+        per_query = await asyncio.gather(
+            *[self._stages.search.search(q, location=location) for q in expanded.queries]
+        )
         report.done(Stage.SEARCH, f"Search returned {len(per_query)} result list(s)")
 
         merged = self._stages.merger.merge(per_query)
