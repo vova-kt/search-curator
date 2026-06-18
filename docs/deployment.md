@@ -60,6 +60,38 @@ uv-managed and locked: dependencies install from `uv.lock` first (cached layer),
 then the project. Real adapters pull heavy deps behind extras — add an extra to the
 image only once you've wired that adapter (`llm`, `embed`, `store`, `bot`).
 
+## Continuous deployment
+
+The NUC pulls — nothing pushes to it. A home box has no inbound exposure, so
+instead of a webhook or CI-over-SSH, [`scripts/deploy.sh`](../scripts/deploy.sh)
+polls `origin` on a short interval and redeploys when the deploy branch moves.
+It is deliberately conservative: a new commit is **gated locally before it goes
+live** — the script runs `./check.sh` (the same gate as CI; see
+[guardrails.md](guardrails.md)) and only a green gate reaches
+`docker compose up -d --build`. This is belt-and-suspenders over the push CI in
+`.github/workflows/check.yml`: it also catches a commit landed by force-push or
+one whose CI hasn't finished.
+
+The last *deployed* commit is recorded in `.deploy-state` (gitignored), not read
+from `HEAD`, so a red gate or a failed `up` leaves the running stack untouched
+and the next tick retries the same commit rather than skipping it. `DEPLOY_PROFILE`
+selects the scheduler (`headless` or `bot`); `DEPLOY_BRANCH` overrides the branch.
+
+Schedule it with the systemd units beside the script
+([`events-curator-deploy.service`](../scripts/events-curator-deploy.service) +
+[`.timer`](../scripts/events-curator-deploy.timer)) — point `WorkingDirectory`
+at the checkout, then:
+
+```sh
+sudo ln -s /opt/events-curator/scripts/events-curator-deploy.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now events-curator-deploy.timer
+journalctl -u events-curator-deploy.service -f   # watch deploys
+```
+
+The host's checkout is treated as read-only: the script fast-forwards only
+(`git pull --ff-only`) and never touches the untracked `config.toml`.
+
 ## Resetting
 
 No migrations pre-`1.0`. When the schema changes, stop the stack, delete the volume

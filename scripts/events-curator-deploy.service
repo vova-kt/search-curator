@@ -1,0 +1,11 @@
+[Unit]
+Description=events-curator continuous deployment poller
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+# Point this at the checkout on the host and pick the scheduler profile.
+WorkingDirectory=/opt/events-curator
+Environment=DEPLOY_PROFILE=headless
+ExecStart=/opt/events-curator/scripts/deploy.sh

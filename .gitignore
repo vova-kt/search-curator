@@ -15,3 +15,4 @@ coverage/
 .venv
 .ruff_cache
 .pytest_cache
+.deploy-state
